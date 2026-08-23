@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MyManageRH — Firma electrónica de recibos</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css?v=68" />
+  <link rel="stylesheet" href="auth.css?v=1" />
+  <link rel="stylesheet" href="landing.css?v=3" />
+  <link rel="stylesheet" href="select-role.css?v=68" />
+  <style>
+    body {
+      background-color: #f8fafc;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="serveWarning" class="serve-warning hidden">
+    Estás abriendo los archivos con el protocolo <code>file://</code>. Abrí la interfaz desde un servidor HTTP para evitar bloqueos CORS.
+    Ejecutá en la carpeta <code>ui/</code>: <code>python -m http.server 8001</code> y visitá
+    <a href="http://127.0.0.1:8001">http://127.0.0.1:8001</a>.
+  </div>
+
+  <div id="app"></div>
+
+  <script>
+    if (location.protocol === 'file:') {
+      document.getElementById('serveWarning').classList.remove('hidden');
+    }
+  </script>
+  <script type="module" src="app.js?v=68"></script>
+</body>
+</html>

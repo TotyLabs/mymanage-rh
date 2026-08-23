@@ -1,0 +1,91 @@
+# ==========================================
+# MYMANAGE - PRODUCTION .gitignore
+# ==========================================
+
+# ---- SECRETS / ENVIRONMENT ----
+.env
+.env.*
+!.env.example
+
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+
+# ---- PRODUCTION DATA ----
+storage/
+temp/
+
+# ---- DATABASE BACKUPS / DUMPS ----
+*.sql
+*.dump
+*.backup
+*.bak
+
+# ---- PYTHON ----
+__pycache__/
+*.py[cod]
+*$py.class
+
+venv/
+.venv/
+env/
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- LOGS ----
+*.log
+logs/
+log/
+
+# ---- RUNTIME ----
+*.pid
+*.sock
+
+# ---- GENERATED / TEMP FILES ----
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# ---- LOCAL DATA / IMPORT-EXPORT FILES ----
+*.xlsx
+*.xls
+*.csv
+
+# ---- GENERATED DOCUMENTS ----
+*.pdf
+
+# ---- IDE / EDITORS ----
+.vscode/
+.idea/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- BACKUPS ----
+backup/
+backups/
+*_backup/
+*-backup/
+# Operational/debug output
+db_output*.txt
+logs_*.txt
+logs_servicio_*.txt
+*investigation*.txt
+
+# Local/debug scripts with possible production data
+scratch/
+
+# Production migration payloads/results
+scripts/migrations/*.json
+
+# Temporary work
+tmp/
