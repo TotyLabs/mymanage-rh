@@ -1,0 +1,15 @@
+User-agent: *
+
+# Permitir el rastreo de las páginas públicas
+Allow: /
+
+# Bloquear áreas privadas de la aplicación
+Disallow: /api/
+Disallow: /admin/
+Disallow: /employee/
+Disallow: /dashboard/
+Disallow: /login
+Disallow: /register
+
+# Ubicación del sitemap
+Sitemap: http://mymanagerh.com/sitemap.xml

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard — MyManageRH</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="container">
+    <header class="page-header flex-between mb-24 mt-24">
+      <div>
+        <h1>Dashboard de Administración</h1>
+        <p class="text-subtle">Gestión de batches, recibos y firmas.</p>
+      </div>
+      <div>
+        <button id="btnLogout" class="btn btn-secondary">Cerrar sesión</button>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="card">
+        <div class="card-header">
+          <h2>Subir batch</h2>
+          <p class="text-subtle">Cargá un PDF para procesar recibos por organización y período.</p>
+        </div>
+
+        <div id="uploadMsg"></div>
+
+        <div class="form-group">
+          <label for="organization_id">ID de organización</label>
+          <input
+            id="organization_id"
+            class="input"
+            placeholder="Organization ID (UUID)"
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="period_label">Período</label>
+          <input
+            id="period_label"
+            class="input"
+            placeholder="Ej: 2026-01"
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="pdffile">Documento PDF</label>
+          <input
+            id="pdffile"
+            type="file"
+            class="input"
+            accept="application/pdf"
+          />
+        </div>
+
+        <div class="mt-16 flex justify-end">
+          <button id="btnUpload" class="btn btn-primary">Subir archivo</button>
+        </div>
+
+        <div id="batchStats" class="text-subtle mt-16"></div>
+        <ul id="sampleUrls" class="list"></ul>
+      </article>
+
+      <article class="card full">
+        <div class="card-header">
+          <h2>Lista de recibos</h2>
+          <p class="text-subtle">Consultá el estado de firma y gestioná acciones sobre cada recibo.</p>
+        </div>
+
+        <div class="flex-between mb-16">
+          <div class="flex items-center gap-8">
+            <label for="filterStatus" class="text-subtle">Filtrar por estado:</label>
+            <select id="filterStatus" class="input input-auto">
+              <option value="">Todos</option>
+              <option value="pending_employer_signature">Pendiente firma empleador</option>
+              <option value="pending_employee_signature">Pendiente firma empleado</option>
+              <option value="signed">Firmado</option>
+            </select>
+          </div>
+
+          <button id="btnRefreshReceipts" class="btn btn-secondary">Actualizar</button>
+        </div>
+
+        <div id="receiptsMsg"></div>
+
+        <div class="table-container mt-16">
+          <table id="receiptsTable" class="table">
+            <thead>
+              <tr>
+                <th>Empleado</th>
+                <th>Período</th>
+                <th>Estado</th>
+                <th>Firma empresa</th>
+                <th>Firma empleado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <footer class="footer">
+      MyManageRH — Panel administrativo
+    </footer>
+
+    <!-- Modal de firma -->
+    <div id="signModal" class="modal hidden" aria-hidden="true">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Firmar como empleador — <span id="modalReceiptId"></span></h3>
+        </div>
+
+        <div id="modalMsg"></div>
+
+        <div class="canvas-wrap">
+          <canvas id="modalCanvas" width="600" height="160"></canvas>
+        </div>
+
+        <div class="modal-footer">
+          <button id="modalClose" class="btn btn-ghost">Cerrar</button>
+        </div>
+
+        <div id="modalResult" class="small-muted mt-8"></div>
+      </div>
+    </div>
+  </main>
+
+  <template id="receiptTpl">
+    <li class="receipt-item">
+      <div>
+        <strong class="receiptName">{{name}}</strong>
+        — Estado: <span class="status">{{status}}</span>
+      </div>
+
+      <div class="small-muted">
+        ID: <span class="rid">{{rid}}</span>
+      </div>
+
+      <div class="form-row">
+        <button class="btn btn-sign">Firmar como empleador</button>
+        <a class="link btn-open-sign-url" target="_blank" rel="noopener noreferrer">Abrir sign URL</a>
+      </div>
+
+      <div class="signArea hidden mt-8">
+        <div class="canvas-wrap">
+          <canvas width="500" height="150"></canvas>
+        </div>
+
+        <div class="flex gap-12 mb-16">
+          <button class="btn btn-primary btn-submit">Guardar cambios</button>
+          <button class="btn btn-ghost btn-clear">Limpiar</button>
+        </div>
+
+        <div class="small-muted">
+          Estado: <span class="localStatus"></span>
+        </div>
+      </div>
+    </li>
+  </template>
+
+  <script type="module" src="admin.js"></script>
+</body>
+</html>

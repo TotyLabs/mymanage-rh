@@ -1,0 +1,14 @@
+[Unit]
+Description=Gunicorn instance for YouCompare Payroll
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/home/totylabs2/Downloads/YouCompare-Payroll-Backup
+Environment="PATH=/home/totylabs2/venv/bin"
+ExecStart=/home/totylabs2/venv/bin/gunicorn -c gunicorn.conf.py main:app
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
