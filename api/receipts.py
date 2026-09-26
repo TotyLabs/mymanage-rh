@@ -129,10 +129,16 @@ def _maybe_decrypted_file_response(
             str(temp_path),
             media_type=media_type,
             filename=filename,
+            headers={"Cache-Control": "private, no-store"},
             background=BackgroundTask(EncryptionService.cleanup_temp_file, temp_path),
         )
 
-    return FileResponse(str(path), media_type=media_type, filename=filename)
+    return FileResponse(
+        str(path),
+        media_type=media_type,
+        filename=filename,
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 def _record_kms_error_best_effort(
@@ -1371,7 +1377,10 @@ async def download_receipt(
                 rebuilt_path,
                 media_type="application/pdf",
                 filename=f"receipt_{receipt_id}.pdf",
-                headers={"X-Delivery-Fallback": "reconstructed"},
+                headers={
+                    "Cache-Control": "private, no-store",
+                    "X-Delivery-Fallback": "reconstructed",
+                },
                 background=BackgroundTask(_cleanup_temp_file, rebuilt_path),
             )
 

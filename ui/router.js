@@ -1,7 +1,7 @@
 /**
  * Router con separación de roles y protección de rutas.
  */
-import { getMe } from './common.js?v=30';
+import { getMe, logoutSession } from './common.js?v=32';
 import { tosAcceptance } from './tos-acceptance.js?v=30';
 import { ROUTES } from './constants.js?v=30';
 
@@ -108,10 +108,12 @@ setInterval(updateNotificationBadges, 60000);
 
 window.logout = async () => {
     try {
-        await fetch('/api/logout', { method: 'POST' });
-    } catch (e) {}
-    window.__USER_CACHE__ = null;
+    await logoutSession();
     location.hash = '#/select-role';
+  } catch (error) {
+    console.error('Error al cerrar sesión:', error);
+    window.alert('No se pudo cerrar la sesión. Verificá la conexión e intentá nuevamente.');
+  }
 };
 
 function parseHash() {

@@ -236,6 +236,25 @@ async function getMe() {
   return apiFetch('/api/auth/me');
 }
 
+async function logoutSession() {
+  const sessionToken = getSessionToken();
+  const response = await fetch(apiUrl('/api/auth/logout'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'X-Requested-With': 'XMLHttpRequest',
+      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}`, 'X-Session-Token': sessionToken } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`logout_failed_${response.status}`);
+  }
+
+  window.localStorage.removeItem('token');
+  window.__USER_CACHE__ = null;
+}
+
 function showToast(message, type = 'info', timeout = 4000) {
   try {
     const container = document.getElementById('toasts');
@@ -305,6 +324,7 @@ export {
   showSuccess,
   withLoader,
   getMe,
+  logoutSession,
   showToast,
   confirmAction,
   esc,
