@@ -1,4 +1,4 @@
-import { apiFetch, apiUrl, showError, esc, escAttr } from './common.js';
+import { apiFetch, apiUrl, showError, esc, escAttr, logoutSession } from './common.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -397,7 +397,7 @@ async function doRefreshReceipts() {
 
 async function logout() {
   try {
-    await apiFetch('/api/auth/logout', { method: 'POST' });
+    await logoutSession();
     window.location.href = 'index.html';
   } catch (error) {
     showError(UI.receiptsMsg(), error);

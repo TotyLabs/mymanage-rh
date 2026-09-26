@@ -648,8 +648,14 @@ async def logout(
     session_token: Optional[str] = Cookie(default=None, alias="session"),
 ):
     """Invalidates the current session."""
-    if session_token:
-        token_hash = hash_token(session_token)
+    tokens = [session_token]
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        tokens.append(auth_header[len("Bearer "):].strip())
+    tokens.extend((request.headers.get("X-Session-Token"), request.headers.get("X-Auth-Token")))
+
+    for token in dict.fromkeys(value for value in tokens if value):
+        token_hash = hash_token(token)
         try:
             with safe_transaction(db):
                 result = db.execute(text("""
@@ -659,11 +665,12 @@ async def logout(
                 row = result.fetchone()
                 user_id = str(row.user_id) if row and row.user_id else None
         except Exception:
-            user_id = None
+            logger.exception("auth.logout_session_delete_failed")
+            raise HTTPException(500, "logout_failed")
         try:
             delete_session_by_hash(token_hash, user_id)
         except Exception:
-            pass
+            logger.exception("auth.logout_cache_delete_failed")
 
     response.delete_cookie("session")
     return {"status": "logged_out"}

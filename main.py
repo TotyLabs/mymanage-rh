@@ -10,8 +10,9 @@ import os
 from pathlib import Path
 import asyncio
 from datetime import timedelta
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
+from fastapi.exception_handlers import http_exception_handler as default_http_exception_handler
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.middleware.cors import CORSMiddleware
@@ -508,6 +509,56 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         status_code=status.HTTP_400_BAD_REQUEST,
         content={"detail": exc.errors()}
     )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    path = request.url.path
+    accept_header = request.headers.get("accept", "").lower()
+    accepts_html = "text/html" in accept_header
+    accepts_pdf = "application/pdf" in accept_header
+    is_navigation = request.headers.get("sec-fetch-mode") == "navigate"
+    is_receipt_download = path.startswith("/api/receipts/") and path.endswith("/download")
+
+    if is_receipt_download and exc.status_code in (401, 403) and (accepts_html or accepts_pdf or is_navigation):
+        if exc.status_code == 401:
+            title = "Iniciá sesión para ver este recibo"
+            message = "Este documento está protegido. Ingresá con la cuenta de la empresa o del empleado al que pertenece."
+            action = "Iniciar sesión"
+        else:
+            title = "Esta cuenta no tiene acceso"
+            message = "El recibo no corresponde a la empresa ni al empleado con el que iniciaste sesión."
+            action = "Cambiar de cuenta"
+
+        content = f"""<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{title} | MyManageRH</title>
+  <link rel="stylesheet" href="/ui/styles.css?v=68">
+  <link rel="stylesheet" href="/ui/auth.css?v=1">
+</head>
+<body>
+  <main class="auth-shell">
+    <section class="card auth-card auth-card-main" role="alert">
+      <div class="auth-header">
+        <div class="auth-icon" aria-hidden="true">!</div>
+        <h1 class="auth-title">{title}</h1>
+        <p class="auth-subtitle">{message}</p>
+      </div>
+      <a class="btn btn-primary btn-lg w-full" href="/ui/#/select-role">{action}</a>
+      <p class="auth-backlink"><a class="link" href="/ui/">Volver al inicio</a></p>
+    </section>
+  </main>
+</body>
+</html>"""
+        return HTMLResponse(
+            content=content,
+            status_code=exc.status_code,
+            headers={**(exc.headers or {}), "Cache-Control": "no-store"},
+        )
+
+    return await default_http_exception_handler(request, exc)
 
 @app.exception_handler(IntegrityError)
 async def integrity_handler(request: Request, exc: IntegrityError):

@@ -1,4 +1,4 @@
-import { getApiBase } from './common.js?v=31';
+import { logoutSession, showToast } from './common.js?v=32';
 
 function getLayoutType(path) {
   if (!path) return 'public';
@@ -9,17 +9,12 @@ function getLayoutType(path) {
 
 async function logoutAndReturnHome() {
   try {
-    const base = getApiBase();
-    await fetch(`${base || ''}/api/auth/logout`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'X-Requested-With': 'XMLHttpRequest' },
-    });
-  } catch (error) {
-    console.error('Error al cerrar sesión:', error);
-  } finally {
+    await logoutSession();
     location.hash = '#/select-role';
     location.reload();
+  } catch (error) {
+    console.error('Error al cerrar sesión:', error);
+    showToast('No se pudo cerrar la sesión. Verificá la conexión e intentá nuevamente.', 'error');
   }
 }
 
