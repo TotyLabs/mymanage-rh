@@ -116,7 +116,12 @@ export async function render(container) {
           <input id="searchEmployees" class="input empresa-search-input" placeholder="Buscar por DNI o nombre..." style="max-width:300px" />
           <button id="btnShowDeleted" class="btn btn-ghost" style="color:var(--danger)">Bajas</button>
           <button id="btnImportLegajo" class="btn btn-secondary">Importar legajo</button>
-          <button id="btnNewEmployee" class="btn btn-primary">Nuevo empleado</button>
+          <button id="btnNewEmployee" class="btn btn-primary empresa-employee-action empresa-new-employee">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14m-7-7h14"></path>
+            </svg>
+            <span>Nuevo empleado</span>
+          </button>
           <button id="btnBack" class="btn btn-ghost">Volver</button>
         </div>
       </div>
@@ -514,8 +519,8 @@ export async function render(container) {
             </div>
 
             <div class="flex items-center gap-8">
-              <button id="empPrintRecord" class="btn btn-primary btn-sm">Imprimir legajo</button>
-              <button id="empProfileEdit" class="btn btn-ghost btn-sm">Modificar</button>
+              <button id="empPrintRecord" class="btn btn-primary btn-sm empresa-employee-action">Imprimir legajo</button>
+              <button id="empProfileEdit" class="btn btn-ghost btn-sm empresa-employee-action">Modificar</button>
             </div>
           </div>
 
@@ -912,11 +917,12 @@ export async function render(container) {
       tdActions.className = 'table-actions';
 
       const actionBox = document.createElement('div');
-      actionBox.className = 'flex items-center gap-4';
+      actionBox.className = 'flex items-center gap-4 empresa-employee-action-group';
 
       const btnProfile = document.createElement('button');
-      btnProfile.className = 'btn btn-ghost btn-sm empresa-icon-btn btn-profile';
-      btnProfile.title = 'Ver ficha';
+      btnProfile.className = 'btn btn-ghost btn-sm empresa-icon-btn empresa-employee-action btn-profile';
+      btnProfile.title = 'Previsualizar legajo';
+      btnProfile.setAttribute('aria-label', 'Previsualizar legajo');
 
       btnProfile.innerHTML = `
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -926,8 +932,9 @@ export async function render(container) {
       `;
 
       const btnDownload = document.createElement('button');
-      btnDownload.className = 'btn btn-ghost btn-sm empresa-icon-btn btn-download';
+      btnDownload.className = 'btn btn-ghost btn-sm empresa-icon-btn empresa-employee-action btn-download';
       btnDownload.title = 'Imprimir legajo';
+      btnDownload.setAttribute('aria-label', 'Imprimir legajo');
       btnDownload.innerHTML = `
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>

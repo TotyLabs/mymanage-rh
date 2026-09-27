@@ -41,6 +41,7 @@ export async function render(container) {
     documents: [],
     grouped: {},
     mode: 'date',
+    selectedEmployeeKey: null,
     searchText: '',
     loading: false
   };
@@ -74,12 +75,12 @@ export async function render(container) {
          
          <div id="payrollView" class="empresa-hub-view">
             <div class="flex-between mb-16">
-              <div class="flex items-center gap-12">
+              <div class="flex items-center gap-12 empresa-history-controls">
                 <input id="searchHistory" class="input empresa-search-input" placeholder="Buscar por DNI o nombre..." style="max-width:250px" />
-                <select id="groupMode" class="input input-auto">
-                  <option value="date">Vista Cronológica</option>
-                  <option value="employee">Vista por Colaborador</option>
-                </select>
+                <div class="empresa-history-mode-toggle" role="group" aria-label="Modo de vista">
+                  <button type="button" class="empresa-history-mode active" data-mode="date" aria-pressed="true">Cronológica</button>
+                  <button type="button" class="empresa-history-mode" data-mode="employee" aria-pressed="false">Por colaborador</button>
+                </div>
               </div>
             </div>
             <div id="historyTree" class="empresa-history-tree"></div>
@@ -156,43 +157,48 @@ export async function render(container) {
 
   function groupReceipts() {
     const tree = {};
-    const monthNames = [
-      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
-    ];
-
     let filtered = [...state.receipts];
     if (state.searchText) {
       const q = state.searchText.toLowerCase();
       filtered = filtered.filter(r => 
-        (r.full_name || r.employee_name || '').toLowerCase().includes(q) ||
-        (r.dni || r.employee_dni || '').toLowerCase().includes(q) ||
-        (r.period_label || '').toLowerCase().includes(q)
+        `${r.full_name || r.employee_name || ''} ${r.dni || r.employee_dni || ''} ${r.period_label || r.period || ''}`.toLowerCase().includes(q)
       );
     }
 
     filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    filtered.forEach((receipt) => {
-      const d = new Date(receipt.created_at);
-      const year = d.getFullYear();
-      const month = monthNames[d.getMonth()];
-      const dayStr = d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-      if (state.mode === 'date') {
-        if (!tree[year]) tree[year] = {};
-        if (!tree[year][month]) tree[year][month] = {};
-        if (!tree[year][month][dayStr]) tree[year][month][dayStr] = [];
-        tree[year][month][dayStr].push(receipt);
-      } else {
-        const employee = receipt.employee_name || 'Sin empleado';
-        if (!tree[employee]) tree[employee] = {};
-        if (!tree[employee][year]) tree[employee][year] = {};
-        if (!tree[employee][year][month]) tree[employee][year][month] = [];
-        tree[employee][year][month].push(receipt);
-      }
-    });
+    if (state.mode === 'date') {
+      Object.assign(tree, groupChronologically(filtered));
+    } else {
+      filtered.forEach((receipt) => {
+        const name = receipt.employee_name || receipt.full_name || 'Sin empleado';
+        const key = receipt.employee_id ? `id:${receipt.employee_id}` : `name:${name.trim().toLowerCase()}`;
+        if (!tree[key]) tree[key] = { name, receipts: [] };
+        tree[key].receipts.push(receipt);
+      });
+    }
     state.grouped = tree;
+  }
+
+  function groupChronologically(receipts) {
+    const grouped = {};
+    const monthNames = [
+      'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+    ];
+
+    receipts.forEach((receipt) => {
+      const date = new Date(receipt.created_at);
+      const year = date.getFullYear();
+      const month = monthNames[date.getMonth()];
+      const day = date.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      if (!grouped[year]) grouped[year] = {};
+      if (!grouped[year][month]) grouped[year][month] = {};
+      if (!grouped[year][month][day]) grouped[year][month][day] = [];
+      grouped[year][month][day].push(receipt);
+    });
+
+    return grouped;
   }
 
   function renderTree() {
@@ -200,12 +206,12 @@ export async function render(container) {
     const loadingEl = el('hubLoading', container);
     const emptyEl = el('hubEmpty', container);
 
-    if (!state.receipts.length) {
+    if (!state.receipts.length || !Object.keys(state.grouped).length) {
       loadingEl.classList.add('hidden');
       emptyEl.innerHTML = `
         <div class="empty-state">
-          <div class="empty-title">Sin registros en Nómina</div>
-          <div class="empty-desc">Los recibos procesados aparecerán aquí cronológicamente.</div>
+          <div class="empty-title">${state.receipts.length ? 'Sin resultados' : 'Sin registros en Nómina'}</div>
+          <div class="empty-desc">${state.receipts.length ? 'Probá con otro nombre, DNI o período.' : 'Los recibos procesados aparecerán aquí cronológicamente.'}</div>
         </div>
       `;
       emptyEl.classList.remove('hidden');
@@ -217,56 +223,102 @@ export async function render(container) {
     treeEl.classList.remove('hidden');
     treeEl.innerHTML = '';
 
-    // Logic from previous version for building sections (truncated for brevity but fully functional)
-    // [RE-IMPLEMENTING CRITICAL TREE LOGIC]
     if (state.mode === 'date') {
-        const years = Object.keys(state.grouped).sort((a, b) => b - a);
-        years.forEach(year => {
-            const yearHeader = document.createElement('div');
-            yearHeader.className = 'empresa-history-year';
-            yearHeader.textContent = year;
-            treeEl.appendChild(yearHeader);
-            
-            const months = Object.keys(state.grouped[year]);
-            months.forEach(month => {
-                const monthHead = document.createElement('div');
-                monthHead.className = 'empresa-history-month';
-                monthHead.textContent = month;
-                treeEl.appendChild(monthHead);
-                
-                const days = Object.keys(state.grouped[year][month]);
-                days.forEach(day => {
-                    const group = document.createElement('div');
-                    group.className = 'empresa-history-day-block';
-                    group.innerHTML = `<div class="empresa-history-day"><span class="empresa-history-day-dot"></span>${day}</div>`;
-                    const rows = document.createElement('div');
-                    rows.className = 'empresa-history-rows';
-                    state.grouped[year][month][day].forEach(r => rows.appendChild(renderReceiptRow(r)));
-                    group.appendChild(rows);
-                    treeEl.appendChild(group);
-                });
-            });
-        });
+      renderChronologicalTree(treeEl, Object.values(state.grouped).flatMap(year =>
+        Object.values(year).flatMap(month => Object.values(month).flat())
+      ));
     } else {
-        // Employee mode
-        const employees = Object.keys(state.grouped).sort();
-        employees.forEach(emp => {
-            const empHeader = document.createElement('div');
-            empHeader.className = 'empresa-history-employee-title';
-            empHeader.textContent = emp;
-            treeEl.appendChild(empHeader);
-            
-            const rows = document.createElement('div');
-            rows.className = 'empresa-history-rows mb-16';
-            // Flatten all years/months for this employee
-            Object.values(state.grouped[emp]).forEach(y => {
-                Object.values(y).forEach(m => {
-                    m.forEach(r => rows.appendChild(renderReceiptRow(r, true)));
-                });
-            });
-            treeEl.appendChild(rows);
-        });
+      if (state.selectedEmployeeKey && state.grouped[state.selectedEmployeeKey]) {
+        renderSelectedEmployee(treeEl, state.selectedEmployeeKey, state.grouped[state.selectedEmployeeKey]);
+      } else {
+        renderEmployeeSelector(treeEl);
+      }
     }
+  }
+
+  function renderChronologicalTree(target, receipts) {
+    const grouped = groupChronologically(receipts);
+    Object.keys(grouped).sort((a, b) => b - a).forEach(year => {
+      const yearHeader = document.createElement('div');
+      yearHeader.className = 'empresa-history-year';
+      yearHeader.textContent = year;
+      target.appendChild(yearHeader);
+
+      Object.keys(grouped[year]).forEach(month => {
+        const monthHeader = document.createElement('div');
+        monthHeader.className = 'empresa-history-month';
+        monthHeader.textContent = month;
+        target.appendChild(monthHeader);
+
+        Object.keys(grouped[year][month]).forEach(day => {
+          const group = document.createElement('div');
+          group.className = 'empresa-history-day-block';
+          const dayHeader = document.createElement('div');
+          dayHeader.className = 'empresa-history-day';
+          dayHeader.innerHTML = '<span class="empresa-history-day-dot"></span>';
+          dayHeader.append(document.createTextNode(day));
+          group.appendChild(dayHeader);
+
+          const rows = document.createElement('div');
+          rows.className = 'empresa-history-rows';
+          grouped[year][month][day].forEach(receipt => rows.appendChild(renderReceiptRow(receipt)));
+          group.appendChild(rows);
+          target.appendChild(group);
+        });
+      });
+    });
+  }
+
+  function renderEmployeeSelector(target) {
+    const selector = document.createElement('div');
+    selector.className = 'empresa-history-employee-grid';
+    Object.entries(state.grouped)
+      .sort(([, first], [, second]) => first.name.localeCompare(second.name, 'es'))
+      .forEach(([key, employee]) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'empresa-history-employee-button';
+        button.textContent = employee.name;
+        button.setAttribute('aria-label', `Ver historial cronológico de ${employee.name}`);
+        button.onclick = () => {
+          state.selectedEmployeeKey = key;
+          renderTree();
+        };
+        selector.appendChild(button);
+      });
+    target.appendChild(selector);
+  }
+
+  function renderSelectedEmployee(target, employeeKey, employee) {
+    const header = document.createElement('div');
+    header.className = 'empresa-history-selected-header';
+
+    const backButton = document.createElement('button');
+    backButton.type = 'button';
+    backButton.className = 'btn btn-ghost btn-sm';
+    backButton.textContent = '← Colaboradores';
+    backButton.onclick = () => {
+      state.selectedEmployeeKey = null;
+      renderTree();
+    };
+
+    const title = document.createElement('h2');
+    title.className = 'empresa-history-selected-name';
+    title.textContent = employee.name;
+    header.append(backButton, title);
+    target.appendChild(header);
+
+    const completed = employee.receipts.filter(receipt => receipt.status === 'signed').length;
+    const pending = employee.receipts.filter(receipt => ['pending', 'pending_employee_signature', 'pending_employer_signature', 'pending_signature'].includes(receipt.status)).length;
+    const stats = document.createElement('div');
+    stats.className = 'empresa-history-stats';
+    stats.innerHTML = `
+      <div class="empresa-history-stat empresa-history-stat-complete"><span>Recibos completados</span><strong>${completed}</strong></div>
+      <div class="empresa-history-stat empresa-history-stat-pending"><span>Recibos pendientes de firma</span><strong>${pending}</strong></div>
+    `;
+    target.appendChild(stats);
+
+    renderChronologicalTree(target, employee.receipts);
   }
 
   function renderReceiptRow(receipt, hideEmployee = false) {
@@ -364,10 +416,18 @@ export async function render(container) {
     renderTree();
   });
 
-  el('groupMode', container).addEventListener('change', (e) => {
-    state.mode = e.target.value;
-    groupReceipts();
-    renderTree();
+  container.querySelectorAll('.empresa-history-mode').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.mode = button.dataset.mode;
+      state.selectedEmployeeKey = null;
+      container.querySelectorAll('.empresa-history-mode').forEach((modeButton) => {
+        const active = modeButton === button;
+        modeButton.classList.toggle('active', active);
+        modeButton.setAttribute('aria-pressed', String(active));
+      });
+      groupReceipts();
+      renderTree();
+    });
   });
 
   // Initial load

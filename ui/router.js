@@ -5,7 +5,7 @@ import { getMe, logoutSession } from './common.js?v=32';
 import { tosAcceptance } from './tos-acceptance.js?v=30';
 import { ROUTES } from './constants.js?v=30';
 
-const VERSION = '30'; // Incremented to force refresh
+const VERSION = '31'; // Incremented to force refresh
 
 const loadPage = (page) => import(`./pages/${page}.js?v=${VERSION}`);
 
