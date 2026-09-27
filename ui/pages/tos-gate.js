@@ -2,9 +2,9 @@
  * TOS Gate Page
  * Full-screen blocker forcing acceptance.
  */
-import { docsContent } from '../docs-content.js';
-import { tosAcceptance } from '../tos-acceptance.js';
-import { ROUTES } from '../constants.js';
+import { docsContent } from '../docs-content.js?v=20260927c';
+import { tosAcceptance } from '../tos-acceptance.js?v=32';
+import { ROUTES } from '../constants.js?v=32';
 
 export const render = async (container, params = {}) => {
   const user = window.__USER_CACHE__;

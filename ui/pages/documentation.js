@@ -2,7 +2,7 @@
  * Documentation Page
  * Layout: Sidebar (categories) | Main Panel (markdown viewer) | Top bar (title + metadata)
  */
-import { docsContent } from '../docs-content.js';
+import { docsContent } from '../docs-content.js?v=20260927c';
 
 export const render = async (container, params = {}) => {
   const docId = params.get('docId') || 'tos';
@@ -23,7 +23,7 @@ export const render = async (container, params = {}) => {
         <header class="docs-header">
           <div class="docs-header-left">
             <h1>${doc.title}</h1>
-            <span class="docs-meta">Última actualización: ${doc.lastUpdated}</span>
+            <span class="docs-meta">Versión ${doc.version} · Última actualización: ${doc.lastUpdated} · Vigente desde: ${doc.effectiveDate}</span>
           </div>
           <div class="docs-header-right">
             <button class="btn btn-outline btn-sm" onclick="window.print()">
