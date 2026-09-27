@@ -488,6 +488,22 @@ async def deep_health_check(db: Session = Depends(get_db)):
 async def ui_redirect_no_slash():
     return RedirectResponse(url=f"{config.BASE_PUBLIC_URL}/ui/")
 
+
+@app.get("/terms", include_in_schema=False)
+async def terms_redirect():
+    return RedirectResponse(url="/ui/#/documentacion?docId=tos")
+
+
+@app.get("/privacy", include_in_schema=False)
+async def privacy_redirect():
+    return RedirectResponse(url="/ui/#/documentacion?docId=privacy")
+
+
+@app.get("/documentacion", include_in_schema=False)
+async def legacy_documentation_redirect(request: Request):
+    doc_id = "privacy" if request.query_params.get("docId") == "privacy" else "tos"
+    return RedirectResponse(url=f"/ui/#/documentacion?docId={doc_id}")
+
 # Montaje de la interfaz de usuario (Frontend)
 # Asegúrese de que UI_DIR sea la carpeta donde está tu index.html
 if Path(UI_DIR).exists():

@@ -2,10 +2,10 @@
  * Router con separación de roles y protección de rutas.
  */
 import { getMe, logoutSession } from './common.js?v=32';
-import { tosAcceptance } from './tos-acceptance.js?v=30';
-import { ROUTES } from './constants.js?v=30';
+import { tosAcceptance } from './tos-acceptance.js?v=32';
+import { ROUTES } from './constants.js?v=32';
 
-const VERSION = '31'; // Incremented to force refresh
+const VERSION = '34'; // Incremented to force refresh
 
 const loadPage = (page) => import(`./pages/${page}.js?v=${VERSION}`);
 

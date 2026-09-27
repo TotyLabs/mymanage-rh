@@ -3,7 +3,7 @@
  * Handles localStorage caching and backend persistence.
  */
 import { apiFetch, showToast } from './common.js?v=31';
-import { TOS_VERSION } from './constants.js?v=31';
+import { TOS_VERSION } from './constants.js?v=32';
 
 const STORAGE_KEY = 'tos_acceptance_v1';
 

@@ -46,7 +46,7 @@ export const LABELS = {
   processed: "Procesado"
 };
 
-export const TOS_VERSION = "2026.04.27";
+export const TOS_VERSION = "2026.09.27";
 
 export const ROUTES = {
   // Common
