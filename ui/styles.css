@@ -1665,8 +1665,46 @@ textarea.error:focus {
 }
 
 .empresa-icon-btn {
-  min-width: 32px;
-  padding: 6px 8px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empresa-employee-action {
+  min-height: 36px;
+  flex: 0 0 auto;
+}
+
+.empresa-employee-action-group .empresa-icon-btn.empresa-employee-action {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+}
+
+.empresa-empleados-actions .btn.empresa-new-employee {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.empresa-profile-header .btn.empresa-employee-action {
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.empresa-employee-action-group {
+  flex-wrap: nowrap;
 }
 
 .empresa-import-header {
@@ -1834,6 +1872,117 @@ textarea.error:focus {
   font-weight: 500;
 }
 
+.empresa-history-controls {
+  flex-wrap: wrap;
+}
+
+.empresa-history-mode-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+}
+
+.empresa-history-mode {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--slate-600);
+  font: inherit;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.empresa-history-mode.active {
+  background: var(--brand-700);
+  color: var(--white);
+}
+
+.empresa-history-mode:focus-visible,
+.empresa-history-employee-button:focus-visible {
+  outline: 2px solid var(--brand-600);
+  outline-offset: 2px;
+}
+
+.empresa-history-employee-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+}
+
+.empresa-history-employee-button {
+  min-height: 56px;
+  padding: 12px 16px;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  color: var(--slate-900);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.empresa-history-employee-button:hover {
+  border-color: var(--brand-500);
+  background: var(--brand-50);
+}
+
+.empresa-history-selected-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.empresa-history-selected-name {
+  margin: 0;
+  color: var(--slate-900);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.empresa-history-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 12px;
+  margin: 16px 0 24px;
+}
+
+.empresa-history-stat {
+  min-height: 64px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--slate-200);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  color: var(--slate-700);
+  font-size: var(--text-caption);
+}
+
+.empresa-history-stat strong {
+  color: var(--slate-900);
+  font-size: 20px;
+}
+
+.empresa-history-stat-complete {
+  border-left-color: var(--success-solid);
+}
+
+.empresa-history-stat-pending {
+  border-left-color: var(--warning-solid);
+}
+
 .empresa-history-loading {
   padding: 48px 24px;
   text-align: center;
@@ -1849,12 +1998,17 @@ textarea.error:focus {
 .empresa-tabs {
   display: flex;
   gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
   border-bottom: 2px solid var(--slate-200);
   background: var(--white);
   padding: 0 4px;
+  scrollbar-width: thin;
 }
 
 .tab-item {
+  flex: 0 0 auto;
   padding: 12px 20px;
   border: none;
   background: transparent;
@@ -1865,6 +2019,7 @@ textarea.error:focus {
   margin-bottom: -2px;
   transition: all 0.2s ease;
   font-size: 14px;
+  white-space: nowrap;
 }
 
 .tab-item:hover {

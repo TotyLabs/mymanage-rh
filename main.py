@@ -535,7 +535,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{title} | MyManageRH</title>
-  <link rel="stylesheet" href="/ui/styles.css?v=68">
+    <link rel="stylesheet" href="/ui/styles.css?v=71">
   <link rel="stylesheet" href="/ui/auth.css?v=1">
 </head>
 <body>
