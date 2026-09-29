@@ -319,5 +319,11 @@ class EmployeePDFService:
         elements.append(footer_wrapper)
 
         # Compilación final del lienzo corporativo de una página
-        doc.build(elements)
+        full_name = " ".join(part for part in (emp.first_name, emp.last_name) if part).strip() or "Empleado"
+
+        def set_pdf_metadata(canvas, _document):
+            canvas.setTitle(f"LEGAJO - {full_name}")
+            canvas.setAuthor(org.name if org else "MyManageRH")
+
+        doc.build(elements, onFirstPage=set_pdf_metadata)
         return buffer.getvalue()

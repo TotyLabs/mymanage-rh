@@ -370,7 +370,7 @@ async def list_pending_receipts(
         text("""
             SELECT
                 pr.id,
-                COALESCE(pr.extracted_fields->>'periodo','N/A') AS period,
+                COALESCE(NULLIF(pb.period_label, ''), pr.extracted_fields->>'periodo', 'N/A') AS period,
                 pr.status,
                 pr.employee_id,
                 COALESCE(pr.snapshot_employee_name, TRIM(e.first_name || ' ' || COALESCE(e.last_name, ''))) AS full_name,
@@ -378,6 +378,7 @@ async def list_pending_receipts(
                 CASE WHEN sr.id IS NOT NULL THEN true ELSE false END AS has_pending_token
             FROM payroll_receipts pr
             LEFT JOIN employees e ON e.id = pr.employee_id
+            LEFT JOIN payroll_batches pb ON pb.id = pr.batch_id
             LEFT JOIN LATERAL (
                 SELECT id FROM signature_requests
                 WHERE receipt_id = pr.id
@@ -447,11 +448,13 @@ async def list_receipts_history(
                     r.created_at,
                     r.signed_at,
                     r.employer_signed_at,
-                    r.extracted_fields->>'periodo' as period,
+                    COALESCE(NULLIF(pb.period_label, ''), r.extracted_fields->>'periodo') as period,
+                    COALESCE(r.snapshot_employee_legajo, e.file_number) as file_number,
                     CASE WHEN r.payment_receipt_path IS NOT NULL THEN true ELSE false END AS has_payment_receipt,
                     r.receipt_pdf_sha256 as file_hash
                 FROM payroll_receipts r
                 LEFT JOIN employees e ON r.employee_id = e.id
+                LEFT JOIN payroll_batches pb ON pb.id = r.batch_id
                 WHERE r.organization_id = :org_id AND r.is_deleted = false
 
                 UNION ALL
@@ -466,6 +469,7 @@ async def list_receipts_history(
                     r.signed_at,
                     r.signed_at as employer_signed_at,
                     r.receipt_metadata->>'periodo' as period,
+                    e.file_number as file_number,
                     false AS has_payment_receipt,
                     r.file_hash as file_hash
                 FROM receipts r
@@ -1182,6 +1186,56 @@ async def generate_receipt_token(
         "token": sr["token"],
         "expires_at": sr["expires_at"].isoformat()
     }
+
+
+@router.post("/{receipt_id}/remind-signature")
+async def remind_employee_signature(
+    receipt_id: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    user=Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    org_id = str(user["organization_id"])
+    row = db.execute(text("""
+        SELECT pr.id, pr.employee_id, pr.status, e.email
+        FROM payroll_receipts pr
+        LEFT JOIN employees e ON e.id = pr.employee_id
+        WHERE pr.id = :id AND pr.organization_id = :org AND pr.is_deleted = false
+    """), {"id": receipt_id, "org": org_id}).fetchone()
+    if not row:
+        raise HTTPException(404, "receipt_not_found")
+    if row.status != "pending_employee_signature":
+        raise HTTPException(409, "receipt_not_pending_employee_signature")
+    if not row.employee_id:
+        raise HTTPException(400, "receipt_not_matched_to_employee")
+    if not row.email:
+        raise HTTPException(400, "employee_email_missing")
+
+    with safe_transaction(db):
+        signature_request = create_signature_request(
+            db,
+            str(row.id),
+            org_id,
+            str(row.employee_id),
+            issuer_ip=get_real_ip(request),
+            issuer_ua=request.headers.get("user-agent"),
+            issuer_user_id=str(user["id"]),
+        )
+        if not signature_request:
+            raise HTTPException(500, "signature_request_creation_failed")
+        audit(db, org_id, "admin", user["id"], "SIGNATURE_REMINDER_SENT", receipt_id, {"email": row.email})
+
+    from notifications.service import NotificationService
+    notifier = NotificationService.get_instance()
+    background_tasks.add_task(
+        notifier.send_signature_pending_notification,
+        receipt_id=receipt_id,
+        organization_id=org_id,
+        employee_id=str(row.employee_id),
+        employee_token=signature_request["token"],
+    )
+    return {"status": "scheduled", "message": "signature_reminder_scheduled"}
 
 
 @router.post("/{receipt_id}/token/me")

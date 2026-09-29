@@ -74,7 +74,7 @@ class FormParser:
         
         # Heuristic: Valid words are usually > 2 chars
         alpha_words = [w for w in words if w.upper() not in {"DE", "LA", "Y", "DEL"}]
-        if any(len(w) <= 2 for w in alpha_words): return False
+        if any(len(w) <= 2 and not re.fullmatch(r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]\. ?", w) for w in alpha_words): return False
         
         return True
 
@@ -82,7 +82,22 @@ class FormParser:
         if not isinstance(val, str): return False
         s = val.strip()
         if not s: return False
-        return s.endswith(":") or len(s) < 20 and self._match_label(s)[0] is not None
+        if s.endswith(":"):
+            return True
+        label, confidence = self._match_label(s)
+        return len(s) < 20 and label is not None and confidence >= 85
+
+    def _extract_explicit_field(self, grid: List[List[Any]], field_path: str) -> Any:
+        """Read a field from its own labeled row, independent of prior value consumption."""
+        for r_idx, row in enumerate(grid):
+            for c_idx, cell in enumerate(row[:MAX_FORM_SCAN_COLS]):
+                label_path, confidence = self._match_label(cell)
+                if label_path != field_path or confidence < 85:
+                    continue
+                value = self._find_value_for_label(grid, r_idx, c_idx, field_path, {(r_idx, c_idx)})
+                if value not in (None, ""):
+                    return value
+        return None
 
     def _looks_like_date_text(self, val: Any) -> bool:
         if isinstance(val, (int, float)):
@@ -158,6 +173,25 @@ class FormParser:
                 best_val = self._find_value_for_label(raw_grid, r_idx, c_idx, label_path, used_coords)
                 if best_val:
                     data[clean_key] = best_val
+
+        # The source workbook repeats category text in Cargo and places dates/codes
+        # nearby. Re-read these values by their explicit labels before resolving Cargo.
+        category_value = self._extract_explicit_field(raw_grid, "employment.category")
+        task_value = self._extract_explicit_field(raw_grid, "employment.task")
+        cargo_value = self._extract_explicit_field(raw_grid, "employment.job_title")
+        hire_date_value = self._extract_explicit_field(raw_grid, "employment.hire_date")
+        if category_value not in (None, ""):
+            data["category"] = category_value
+        if task_value not in (None, ""):
+            data["task"] = task_value
+        if task_value not in (None, ""):
+            data["job_title"] = task_value
+        elif cargo_value not in (None, ""):
+            data["job_title"] = cargo_value
+        elif data.get("category") not in (None, ""):
+            data["job_title"] = data["category"]
+        if hire_date_value not in (None, ""):
+            data["hire_date"] = hire_date_value
 
         # Post-Process specific to segment
         if "full_name" in data: data = self._resolve_full_name(data)

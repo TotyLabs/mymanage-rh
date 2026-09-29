@@ -41,6 +41,9 @@ export async function render(container) {
     documents: [],
     grouped: {},
     mode: 'date',
+    sortMode: 'chronological',
+    employeeLayout: 'selector',
+    filteredReceipts: [],
     selectedEmployeeKey: null,
     searchText: '',
     loading: false
@@ -80,6 +83,19 @@ export async function render(container) {
                 <div class="empresa-history-mode-toggle" role="group" aria-label="Modo de vista">
                   <button type="button" class="empresa-history-mode active" data-mode="date" aria-pressed="true">Cronológica</button>
                   <button type="button" class="empresa-history-mode" data-mode="employee" aria-pressed="false">Por colaborador</button>
+                </div>
+                <select id="historySort" class="input input-auto" aria-label="Ordenar historial">
+                  <option value="chronological">Por cronología</option>
+                  <option value="name-asc">Nombre A - Z</option>
+                  <option value="name-desc">Nombre Z - A</option>
+                  <option value="file-number">Número de legajo</option>
+                </select>
+              </div>
+              <div id="employeeViewOptions" class="empresa-history-view-menu hidden">
+                <button type="button" id="employeeViewMenuTrigger" class="empresa-history-view-trigger" aria-label="Opciones de vista" aria-expanded="false">⋯</button>
+                <div id="employeeViewMenu" class="empresa-history-view-menu-panel hidden" role="menu">
+                  <button type="button" data-employee-layout="selector" role="menuitem">Elegir colaborador</button>
+                  <button type="button" data-employee-layout="list" role="menuitem">Listar todos los colaboradores</button>
                 </div>
               </div>
             </div>
@@ -165,7 +181,21 @@ export async function render(container) {
       );
     }
 
-    filtered.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    state.filteredReceipts = filtered;
+    filtered.sort((a, b) => {
+      if (state.sortMode === 'name-asc') {
+        return (a.employee_name || a.full_name || '').localeCompare(b.employee_name || b.full_name || '', 'es');
+      }
+      if (state.sortMode === 'name-desc') {
+        return (b.employee_name || b.full_name || '').localeCompare(a.employee_name || a.full_name || '', 'es');
+      }
+      if (state.sortMode === 'file-number') {
+        const byFileNumber = String(a.file_number || '').localeCompare(String(b.file_number || ''), 'es', { numeric: true });
+        return byFileNumber || (a.employee_name || '').localeCompare(b.employee_name || '', 'es');
+      }
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+    state.filteredReceipts = filtered;
 
     if (state.mode === 'date') {
       Object.assign(tree, groupChronologically(filtered));
@@ -224,12 +254,16 @@ export async function render(container) {
     treeEl.innerHTML = '';
 
     if (state.mode === 'date') {
-      renderChronologicalTree(treeEl, Object.values(state.grouped).flatMap(year =>
-        Object.values(year).flatMap(month => Object.values(month).flat())
-      ));
+      if (state.sortMode === 'chronological') {
+        renderChronologicalTree(treeEl, state.filteredReceipts);
+      } else {
+        renderSortedReceiptList(treeEl, state.filteredReceipts);
+      }
     } else {
       if (state.selectedEmployeeKey && state.grouped[state.selectedEmployeeKey]) {
         renderSelectedEmployee(treeEl, state.selectedEmployeeKey, state.grouped[state.selectedEmployeeKey]);
+      } else if (state.employeeLayout === 'list') {
+        renderEmployeeList(treeEl);
       } else {
         renderEmployeeSelector(treeEl);
       }
@@ -273,7 +307,7 @@ export async function render(container) {
     const selector = document.createElement('div');
     selector.className = 'empresa-history-employee-grid';
     Object.entries(state.grouped)
-      .sort(([, first], [, second]) => first.name.localeCompare(second.name, 'es'))
+      .sort(([, first], [, second]) => compareEmployeeGroups(first, second))
       .forEach(([key, employee]) => {
         const button = document.createElement('button');
         button.type = 'button';
@@ -287,6 +321,46 @@ export async function render(container) {
         selector.appendChild(button);
       });
     target.appendChild(selector);
+  }
+
+  function renderSortedReceiptList(target, receipts) {
+    const rows = document.createElement('div');
+    rows.className = 'empresa-history-rows';
+    receipts.forEach((receipt) => rows.appendChild(renderReceiptRow(receipt)));
+    target.appendChild(rows);
+  }
+
+  function renderEmployeeList(target) {
+    const employees = Object.entries(state.grouped).sort(([, first], [, second]) => compareEmployeeGroups(first, second));
+
+    employees.forEach(([, employee]) => {
+      const section = document.createElement('section');
+      section.className = 'empresa-history-employee-list-section';
+      const heading = document.createElement('h3');
+      heading.className = 'empresa-history-employee-list-heading';
+      heading.textContent = employee.name;
+      section.appendChild(heading);
+      const rows = document.createElement('div');
+      rows.className = 'empresa-history-rows';
+      employee.receipts.forEach((receipt) => rows.appendChild(renderReceiptRow(receipt, true)));
+      section.appendChild(rows);
+      target.appendChild(section);
+    });
+  }
+
+  function compareEmployeeGroups(first, second) {
+    if (state.sortMode === 'name-desc') return second.name.localeCompare(first.name, 'es');
+    if (state.sortMode === 'file-number') {
+      const firstFile = first.receipts[0]?.file_number || '';
+      const secondFile = second.receipts[0]?.file_number || '';
+      return String(firstFile).localeCompare(String(secondFile), 'es', { numeric: true }) || first.name.localeCompare(second.name, 'es');
+    }
+    if (state.sortMode === 'chronological') {
+      const firstLatest = Math.max(...first.receipts.map((receipt) => new Date(receipt.created_at).getTime()));
+      const secondLatest = Math.max(...second.receipts.map((receipt) => new Date(receipt.created_at).getTime()));
+      return secondLatest - firstLatest || first.name.localeCompare(second.name, 'es');
+    }
+    return first.name.localeCompare(second.name, 'es');
   }
 
   function renderSelectedEmployee(target, employeeKey, employee) {
@@ -331,6 +405,7 @@ export async function render(container) {
         <span class="small-muted empresa-history-time">${dateStr}</span>
         ${!hideEmployee ? `<span class="empresa-history-employee">${receipt.employee_name || 'N/D'}</span>` : ''}
         <span class="small-muted">Ref: ${receipt.period || 'N/D'}</span>
+        ${receipt.file_number ? `<span class="small-muted">Legajo: ${receipt.file_number}</span>` : ''}
       </div>
       <div class="empresa-history-row-right" style="display:flex; gap:8px; align-items:center;">
       </div>
@@ -420,6 +495,7 @@ export async function render(container) {
     button.addEventListener('click', () => {
       state.mode = button.dataset.mode;
       state.selectedEmployeeKey = null;
+      el('employeeViewOptions', container).classList.toggle('hidden', state.mode !== 'employee');
       container.querySelectorAll('.empresa-history-mode').forEach((modeButton) => {
         const active = modeButton === button;
         modeButton.classList.toggle('active', active);
@@ -428,6 +504,37 @@ export async function render(container) {
       groupReceipts();
       renderTree();
     });
+  });
+
+  el('historySort', container).addEventListener('change', (event) => {
+    state.sortMode = event.target.value;
+    state.selectedEmployeeKey = null;
+    groupReceipts();
+    renderTree();
+  });
+
+  const employeeViewTrigger = el('employeeViewMenuTrigger', container);
+  const employeeViewMenu = el('employeeViewMenu', container);
+  employeeViewTrigger.addEventListener('click', (event) => {
+    event.stopPropagation();
+    const willOpen = employeeViewMenu.classList.contains('hidden');
+    employeeViewMenu.classList.toggle('hidden', !willOpen);
+    employeeViewTrigger.setAttribute('aria-expanded', String(willOpen));
+  });
+  employeeViewMenu.querySelectorAll('[data-employee-layout]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.employeeLayout = button.dataset.employeeLayout;
+      state.selectedEmployeeKey = null;
+      employeeViewMenu.classList.add('hidden');
+      employeeViewTrigger.setAttribute('aria-expanded', 'false');
+      renderTree();
+    });
+  });
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('.empresa-history-view-menu')) {
+      employeeViewMenu.classList.add('hidden');
+      employeeViewTrigger.setAttribute('aria-expanded', 'false');
+    }
   });
 
   // Initial load

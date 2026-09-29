@@ -731,6 +731,19 @@ class Normalizer:
                 except ValueError:
                     pass
             return re.sub(r'\s+', ' ', s_val)
+
+        if attr_name == "status":
+            s = str(val).strip().lower()
+            s = s.replace("_", " ").replace("-", " ")
+            if any(x in s for x in ["inactivo", "baja", "retirado", "desactivado"]):
+                return "inactive"
+            if any(x in s for x in ["activo", "funcion", "en funcion", "en función", "vigente"]):
+                return "active"
+            if any(x in s for x in ["pendiente", "pending"]):
+                return "pending_verification"
+            if s in ["pre_registered", "pre-registered", "pre registered"]:
+                return "pre_registered"
+            return str(val).strip()
         
         return str(val).strip()
 
