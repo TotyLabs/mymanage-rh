@@ -825,6 +825,24 @@ button[disabled] {
   font-size: 12px;
 }
 
+.empresa-dashboard-shell #receiptsTable .badge.warning {
+  padding: 4px 8px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.empresa-dashboard-shell #receiptsTable .table-actions .form-row {
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.empresa-dashboard-shell #receiptsTable .table-actions .btn {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
 .btn-lg {
   min-height: 46px;
   padding: 10px 24px;
@@ -1685,6 +1703,45 @@ textarea.error:focus {
   height: 36px;
   min-height: 36px;
   padding: 0;
+  flex: 0 0 36px;
+  overflow: visible;
+}
+
+.empresa-employee-action-group {
+  gap: 8px;
+  align-items: center;
+}
+
+.empresa-employee-action-group .empresa-icon-btn svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  color: currentColor;
+}
+
+.empresa-employee-action-group .btn-delete {
+  background: var(--error-text);
+  color: var(--white);
+}
+
+.empresa-employee-action-group .btn-restore {
+  background: var(--success-solid);
+  color: var(--white);
+}
+
+.empresa-employee-action-group .empresa-icon-btn.btn-delete,
+.empresa-employee-action-group .empresa-icon-btn.btn-restore {
+  width: auto;
+  min-width: 94px;
+  padding: 0 9px;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.empresa-employee-action-group .btn-delete svg,
+.empresa-employee-action-group .btn-restore svg {
+  stroke: currentColor;
 }
 
 .empresa-empleados-actions .btn.empresa-new-employee {
@@ -1701,11 +1758,18 @@ textarea.error:focus {
   height: 36px;
   min-height: 36px;
   padding: 0 12px;
+  display: inline-flex;
+  white-space: nowrap;
 }
 
-.empresa-employee-action-group {
+.empresa-profile-header > .flex {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: nowrap;
 }
+
+.empresa-employee-action-group { flex-wrap: nowrap; }
 
 .empresa-import-header {
   justify-content: space-between;
@@ -1909,6 +1973,49 @@ textarea.error:focus {
   outline-offset: 2px;
 }
 
+.empresa-history-view-menu {
+  position: relative;
+  margin-left: auto;
+}
+
+.empresa-history-view-trigger {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  color: var(--slate-700);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.empresa-history-view-menu-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 210px;
+  padding: 6px;
+  border: 1px solid var(--slate-200);
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  box-shadow: var(--shadow-lg);
+}
+
+.empresa-history-view-menu-panel button {
+  display: block;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 4px;
+  color: var(--slate-800);
+  text-align: left;
+  font-size: var(--text-caption);
+}
+
+.empresa-history-view-menu-panel button:hover {
+  background: var(--slate-50);
+}
+
 .empresa-history-employee-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
@@ -1932,6 +2039,18 @@ textarea.error:focus {
 .empresa-history-employee-button:hover {
   border-color: var(--brand-500);
   background: var(--brand-50);
+}
+
+.empresa-history-employee-list-section + .empresa-history-employee-list-section {
+  margin-top: 18px;
+}
+
+.empresa-history-employee-list-heading {
+  margin: 0 0 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--slate-200);
+  color: var(--slate-800);
+  font-size: var(--text-body);
 }
 
 .empresa-history-selected-header {
@@ -2115,7 +2234,7 @@ textarea.error:focus {
   background: var(--slate-50);
   padding: 8px 12px;
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .empresa-history-row-left,
@@ -2131,8 +2250,13 @@ textarea.error:focus {
 }
 
 .empresa-history-employee {
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--slate-900);
+}
+
+.empresa-history-row-right .badge {
+  font-size: 14px;
 }
 
 /* ==========================================================================

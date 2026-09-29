@@ -217,6 +217,7 @@ from api.legajo import router as legajo_router
 from api.notifications import router as notifications_router
 from api.documents import router as documents_router
 from api.password_reset import router as password_reset_router
+from api.labor_models import router as labor_models_router
 
 # Importante: Las rutas de API siempre deben ir ANTES que el montaje de archivos est !ticos
 app.include_router(verification_router)
@@ -236,6 +237,7 @@ app.include_router(legajo_router)
 app.include_router(notifications_router)
 app.include_router(documents_router)
 app.include_router(password_reset_router)
+app.include_router(labor_models_router)
 
 
 # --- Public Legacy Redirects ---

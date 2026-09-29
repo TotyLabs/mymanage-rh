@@ -163,6 +163,7 @@ function buildShell() {
                 </th>
                 <th class="sortable" data-sort="full_name">Empleado ↕</th>
                 <th class="sortable" data-sort="dni">DNI ↕</th>
+                <th>Referencia</th>
                 <th>Estado</th>
                 <th>Enlace firma</th>
                 <th>Acciones</th>
@@ -492,9 +493,7 @@ export async function render(container, params) {
   function getVisibleReceipts() {
     let visible = [...state.receipts];
 
-    if (!state.filterStatus) {
-      visible = visible.filter((receipt) => receipt.status !== 'signed');
-    } else {
+    if (state.filterStatus) {
       visible = visible.filter((receipt) => receipt.status === state.filterStatus);
     }
 
@@ -581,6 +580,9 @@ export async function render(container, params) {
       const tdDni = document.createElement('td');
       tdDni.textContent = receipt.employee_dni || '-';
 
+      const tdReference = document.createElement('td');
+      tdReference.textContent = receipt.period || 'N/D';
+
       const tdStatus = document.createElement('td');
       tdStatus.appendChild(createStatusBadge(receipt.status, receipt.rejection_reason));
 
@@ -633,6 +635,25 @@ export async function render(container, params) {
         signBtn.textContent = 'Firmar';
         signBtn.addEventListener('click', () => openSignModal(receipt));
         actions.appendChild(signBtn);
+      }
+
+      if (receipt.status === 'pending_employee_signature') {
+        const reminderBtn = document.createElement('button');
+        reminderBtn.className = 'btn btn-secondary btn-sm';
+        reminderBtn.textContent = 'Enviar recordatorio de firma';
+        reminderBtn.addEventListener('click', async () => {
+          reminderBtn.disabled = true;
+          try {
+            await apiFetch(`/api/receipts/${receipt.id}/remind-signature`, { method: 'POST' });
+            showToast('Recordatorio de firma enviado al empleado', 'success');
+          } catch (error) {
+            const detail = error?.body?.detail ? String(error.body.detail) : 'No se pudo enviar el recordatorio.';
+            showToast(detail, 'error');
+          } finally {
+            reminderBtn.disabled = false;
+          }
+        });
+        actions.appendChild(reminderBtn);
       }
 
       if (receipt.status === 'signed') {
@@ -688,7 +709,7 @@ export async function render(container, params) {
         }
       });
 
-      tr.append(tdCheck, tdEmp, tdDni, tdStatus, tdToken, tdActions);
+      tr.append(tdCheck, tdEmp, tdDni, tdReference, tdStatus, tdToken, tdActions);
       tbody.appendChild(tr);
     });
 

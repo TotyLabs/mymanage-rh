@@ -399,6 +399,7 @@ async def get_employee_profile(
         raise HTTPException(404, "employee_not_found")
 
     emp_data = dict(row._mapping)
+    emp_data.pop("extra_fields", None)
     # Formatear fechas, antigüedad y enums
     for key in ['birth_date', 'hire_date', 'termination_date', 'created_at']:
         if emp_data.get(key):
@@ -1398,10 +1399,19 @@ async def get_employee_record_pdf(
     from services.employee_pdf_service import EmployeePDFService
     import io
     from fastapi.responses import StreamingResponse
+    from urllib.parse import quote
+    import re
     
     try:
         pdf_service = EmployeePDFService(db)
         pdf_bytes = pdf_service.generate_record_pdf(emp_id, org_id)
+        employee = db.execute(text("""
+            SELECT first_name, last_name FROM employees
+            WHERE id = :id AND organization_id = :org
+        """), {"id": emp_id, "org": org_id}).fetchone()
+        employee_name = " ".join(part for part in (employee.first_name, employee.last_name) if part).strip() if employee else "Empleado"
+        document_title = f"LEGAJO - {employee_name or 'Empleado'}"
+        safe_filename = re.sub(r"[^A-Za-z0-9._ -]", "", document_title).strip() or "LEGAJO DE PERSONAL"
         
         # Audit log
         audit(db, org_id, user["role"], user["id"], "EMPLOYEE_RECORD_DOWNLOADED", emp_id, {"format": "pdf"})
@@ -1410,7 +1420,7 @@ async def get_employee_record_pdf(
             io.BytesIO(pdf_bytes), 
             media_type="application/pdf", 
             headers={
-                "Content-Disposition": f"attachment; filename=legajo_{emp_id[:8]}.pdf",
+                "Content-Disposition": f"inline; filename=\"{safe_filename}.pdf\"; filename*=UTF-8''{quote(document_title + '.pdf')}",
                 "Access-Control-Expose-Headers": "Content-Disposition"
             }
         )

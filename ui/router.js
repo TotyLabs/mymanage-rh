@@ -1,11 +1,11 @@
 /**
  * Router con separación de roles y protección de rutas.
  */
-import { getMe, logoutSession } from './common.js?v=32';
-import { tosAcceptance } from './tos-acceptance.js?v=32';
-import { ROUTES } from './constants.js?v=32';
+import { getMe, logoutSession } from './common.js?v=106';
+import { tosAcceptance } from './tos-acceptance.js?v=106';
+import { ROUTES } from './constants.js?v=106';
 
-const VERSION = '34'; // Incremented to force refresh
+const VERSION = '106'; // Refresh history layout, employee actions, and legajo title
 
 const loadPage = (page) => import(`./pages/${page}.js?v=${VERSION}`);
 
@@ -31,6 +31,7 @@ const routes = {
   '#/empresa/recibos': () => loadPage('empresa-dashboard'),
   '#/empresa/batches': () => loadPage('empresa-dashboard'),
   '#/empresa/empleados': () => loadPage('empresa-empleados'),
+  '#/empresa/modelos-laborales': () => loadPage('empresa-modelos-laborales'),
   '#/empresa/configuracion': () => loadPage('empresa-configuracion'),
   '#/empresa/historial': () => loadPage('empresa-historial'),
   '#/empresa/notificaciones': () => loadPage('empresa-notificaciones'),
@@ -58,6 +59,7 @@ function renderNavbar(user, currentPath) {
       <a href="#/empresa/dashboard" class="nav-link ${active('#/empresa/dashboard')}">Panel de Control</a>
       <a href="#/empresa/historial" class="nav-link ${active('#/empresa/historial')}">Historial</a>
       <a href="#/empresa/empleados" class="nav-link ${active('#/empresa/empleados')}">Empleados</a>
+      <a href="#/empresa/modelos-laborales" class="nav-link ${active('#/empresa/modelos-laborales')}">Modelos Laborales</a>
       <a href="#/empresa/notificaciones" class="nav-link ${active('#/empresa/notificaciones')}" id="nav-notif">Notificaciones</a>
       <a href="#/empresa/configuracion" class="nav-link ${active('#/empresa/configuracion')}">Configuración</a>
       <a href="javascript:void(0)" onclick="logout()" class="nav-link">Cerrar sesión</a>

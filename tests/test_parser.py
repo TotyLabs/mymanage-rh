@@ -96,6 +96,28 @@ class FormParserExtractionTests(unittest.TestCase):
         self.assertIn("full_name", records[0])
         self.assertTrue(records[0].get("full_name"))
 
+    def test_hormicret_task_category_and_hire_date(self):
+        workbook_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fichaempleadohormicret.xls")
+        if not os.path.exists(workbook_path):
+            self.skipTest("Local Hormicret workbook is not available")
+
+        records = self.parser.parse(file_path=workbook_path)
+        employee = next(record for record in records if record.get("legajo") == "9")
+
+        self.assertEqual(employee.get("full_name"), "IBARRA, RAMON ENRIQUE")
+        self.assertEqual(employee.get("task"), "SERENO")
+        self.assertEqual(employee.get("job_title"), "SERENO")
+        self.assertEqual(employee.get("category"), "NIVEL B")
+        self.assertEqual(employee.get("hire_date"), "2020-08-03")
+
+        first_category = next(record for record in records if record.get("legajo") == "2")
+        second_category = next(record for record in records if record.get("legajo") == "26")
+        initial_name = next(record for record in records if record.get("legajo") == "66")
+        self.assertEqual(first_category.get("category"), "1ER CATEGORIA")
+        self.assertEqual(second_category.get("category"), "MAESTRANZA 2DA")
+        self.assertEqual(second_category.get("job_title"), "MAESTRANZA")
+        self.assertNotEqual(initial_name.get("_parser_status"), "invalid")
+
 
 from services.legajo.parsers import ExcelParser
 from services.legajo.normalizer import Normalizer

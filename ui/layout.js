@@ -1,4 +1,4 @@
-import { logoutSession, showToast } from './common.js?v=32';
+import { logoutSession, showToast } from './common.js?v=106';
 
 function getLayoutType(path) {
   if (!path) return 'public';
@@ -135,6 +135,7 @@ export function bindHeader() {
         { href: '#/empresa/dashboard', text: 'Panel de Control' },
         { href: '#/empresa/historial', text: 'Historial' },
         { href: '#/empresa/empleados', text: 'Empleados' },
+        { href: '#/empresa/modelos-laborales', text: 'Modelos Laborales' },
         { href: '#/empresa/notificaciones', text: 'Notificaciones', id: 'nav-notif' },
         { href: '#/empresa/configuracion', text: 'Configuración' },
       ];

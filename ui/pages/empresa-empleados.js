@@ -942,8 +942,9 @@ export async function render(container) {
       `;
 
       const btnEdit = document.createElement('button');
-      btnEdit.className = 'btn btn-ghost btn-sm empresa-icon-btn btn-edit';
+      btnEdit.className = 'btn btn-ghost btn-sm empresa-icon-btn empresa-employee-action btn-edit';
       btnEdit.title = 'Modificar legajo';
+      btnEdit.setAttribute('aria-label', 'Modificar legajo');
 
       btnEdit.innerHTML = `
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -953,20 +954,22 @@ export async function render(container) {
 
       const btnDel = document.createElement('button');
       if (isDeleted) {
-        btnDel.className = 'btn btn-success btn-sm empresa-icon-btn btn-restore';
+        btnDel.className = 'btn btn-success btn-sm empresa-icon-btn empresa-employee-action btn-restore';
         btnDel.title = 'Dar de alta';
         btnDel.innerHTML = `
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
           </svg>
+          <span>Dar de alta</span>
         `;
       } else {
-        btnDel.className = 'btn btn-danger btn-sm empresa-icon-btn btn-delete';
+        btnDel.className = 'btn btn-danger btn-sm empresa-icon-btn empresa-employee-action btn-delete';
         btnDel.title = 'Dar de baja';
         btnDel.innerHTML = `
           <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
           </svg>
+          <span>Dar de baja</span>
         `;
       }
 
@@ -1472,23 +1475,6 @@ export async function render(container) {
         ])
       );
 
-      if (emp.extra_fields && Object.keys(emp.extra_fields).length > 0) {
-        const extraItems = Object.entries(emp.extra_fields)
-          .map(([key, value]) => ({
-            label: prettyLabels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-            value,
-          }))
-          .filter((item) => {
-            const cleanValue =
-              typeof item.value === 'object' && item.value !== null ? item.value.value : item.value;
-            return cleanValue !== null && cleanValue !== undefined && cleanValue !== '' && cleanValue !== 'null';
-          });
-
-        if (extraItems.length > 0) {
-          body.append(renderSection('Datos adicionales detectados', extraItems));
-        }
-      }
-
       el('empPrintRecord', container).onclick = () => {
         const url = apiUrl(`/api/employees/${employeeId}/record-pdf`);
         const link = document.createElement('a');
@@ -1837,19 +1823,6 @@ export async function render(container) {
       `;
     });
     html += '</div>';
-
-    // Add extra fields if any
-    const extra = data.extra_fields || {};
-    if (Object.keys(extra).length > 0) {
-      html += `
-        <div class="preview-section mt-16">
-          <div class="preview-section-title">Otros Datos</div>
-          <div class="preview-field-value" style="font-size:0.9em; opacity:0.8; word-break:break-all;">
-            ${Object.entries(extra).map(([k, v]) => `<strong>${k}:</strong> ${v}`).join(' | ')}
-          </div>
-        </div>
-      `;
-    }
 
     box.innerHTML = html;
     openUiModal('importRawModal', container);

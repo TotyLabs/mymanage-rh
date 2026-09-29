@@ -216,6 +216,11 @@ class IngestionService:
             ignore_list = match.ignore_fields or []
             for k, v in db_fields.items():
                 if v is not None and k not in ignore_list:
+                    if k == "status":
+                        v = self.normalizer.coerce_value(k, v)
+                        if v in {"active", "inactive", "pending_verification", "pre_registered"}:
+                            employee.status = v
+                            continue
                     setattr(employee, k, v)
             
             # Merge extra_fields
@@ -253,12 +258,21 @@ class IngestionService:
             employee.extra_fields = enriched_extra
             employee.profile_completed = True
             
-            # Generation of Invite Token (Phase 2 Hardening)
-            import secrets
-            from datetime import timedelta
-            employee.status = EmployeeStatus.pre_registered
-            employee.invite_token = secrets.token_urlsafe(32)
-            employee.invite_token_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+            # Do not force new imports into pre_registered.
+            # Preserve a valid employee status from the source data when present,
+            # and otherwise leave the default lifecycle status unchanged.
+            raw_status = record.db_fields.get("status") or record.identity.status if hasattr(record.identity, "status") else None
+            if raw_status:
+                normalized_status = self.normalizer.coerce_value("status", raw_status)
+                if normalized_status in {"active", "inactive", "pending_verification", "pre_registered"}:
+                    employee.status = normalized_status
+            else:
+                employee.status = EmployeeStatus.active
+
+            # Only create invite tokens for account flows that explicitly need them,
+            # not for ordinary imported workforce rows.
+            employee.invite_token = None
+            employee.invite_token_expires_at = None
             
             # Safety net: Ensure first_name is NOT NULL to avoid DB crash
             if not getattr(employee, "first_name", None):
