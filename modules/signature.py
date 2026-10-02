@@ -394,11 +394,33 @@ class SignatureEngine:
                 if not page.get_text("text").strip():
                     logger.warning(f"signature.warning: Page {page_num} seems to be a scanned image (no text layer).")
 
-                # Prepare an optional anchor override for the validation seal when
-                # we detect the explicit word 'Firma' in UNEMPLOYMENT documents.
+                # Honor explicit signature locations supplied by document templates.
                 override_anchor_rect = None
+                place_seal_on_anchor = False
                 try:
-                    if doc_type and str(doc_type).upper() == "UNEMPLOYMENT":
+                    normalized_doc_type = str(doc_type or "").upper()
+                    if normalized_doc_type in {"LABOR_MODEL", "TLG-INT-001"}:
+                        anchor_text = "{{empresa.campo_firma_sello}}"
+                        anchor_rects = page.search_for(anchor_text)
+                        if anchor_rects:
+                            override_anchor_rect = fitz.Rect(anchor_rects[0])
+                            page.add_redact_annot(override_anchor_rect, fill=(1, 1, 1))
+                            page.apply_redactions()
+                            place_seal_on_anchor = True
+                            logger.info(
+                                "signature.seal_position: labor model placeholder detected "
+                                f"page={page_num} x={int(override_anchor_rect.x0)} y={int(override_anchor_rect.y0)}"
+                            )
+                        else:
+                            for legacy_anchor in ("FIRMA DEL EMPLEADOR", "FIRMA / SELLO DEL EMPLEADOR"):
+                                legacy_rects = page.search_for(legacy_anchor)
+                                if legacy_rects:
+                                    override_anchor_rect = fitz.Rect(legacy_rects[0])
+                                    logger.info("signature.seal_position: legacy labor-model anchor detected")
+                                    break
+                            if not override_anchor_rect:
+                                raise SignatureError("labor_model_seal_anchor_missing")
+                    elif normalized_doc_type == "UNEMPLOYMENT":
                         firma_rects = self.search_text_robust(page, "Firma")
                         if firma_rects:
                             # Use the first robust match as the anchor for the seal.
@@ -408,7 +430,9 @@ class SignatureEngine:
                             # Intentionally DO NOT insert the manuscript signature image here.
                             # The requirement is to place only the validation seal for UNEMPLOYMENT.
                 except Exception as e:
-                    logger.warning(f"signature.unemployment_heuristic_failed: {e}")
+                    logger.warning(f"signature.document_anchor_failed: {e}")
+                    if normalized_doc_type in {"LABOR_MODEL", "TLG-INT-001"}:
+                        raise
 
                 # Detect ALL positions using Layout-Aware engine
                 positions = self.detect_signature_positions(page, role)
@@ -480,7 +504,9 @@ class SignatureEngine:
                             signature_bytes=signature_bytes,
                             doc=doc,
                             anchor_rect=anchor_rect,
-                            occupied_rects=occupied_rects_by_page.get(page_num, [])
+                            occupied_rects=occupied_rects_by_page.get(page_num, []),
+                            place_on_anchor=place_seal_on_anchor,
+                            doc_type=doc_type,
                         )
                         seal_applied = True
                     else:
@@ -494,7 +520,8 @@ class SignatureEngine:
                             signature_level=signature_level, role=role,
                             signature_bytes=signature_bytes,
                             doc=doc,
-                            occupied_rects=occupied_rects_by_page.get(page_num, [])
+                            occupied_rects=occupied_rects_by_page.get(page_num, []),
+                            doc_type=doc_type,
                         )
                         seal_applied = True
                 
@@ -513,7 +540,8 @@ class SignatureEngine:
                         signature_level=signature_level, role=role,
                         signature_bytes=signature_bytes,
                         doc=doc,
-                        occupied_rects=occupied_rects_by_page.get(0, [])
+                        occupied_rects=occupied_rects_by_page.get(0, []),
+                        doc_type=doc_type,
                     )
                     seal_applied = True
                 else:
@@ -591,7 +619,8 @@ class SignatureEngine:
                                document_hash="", signer_identity=None,
                                signature_level="X509", role="employee",
                                signature_bytes=None, doc=None,
-                               anchor_rect=None, occupied_rects=None):
+                               anchor_rect=None, occupied_rects=None,
+                               place_on_anchor=False, doc_type=None):
         """
         Dibuja el sello de validación MyManageRH en la página siguiendo estándares industriales.
         Diseño: Badge horizontal [ QR ] FIRMA ELECTRÓNICA VERIFICADA + Info
@@ -616,16 +645,17 @@ class SignatureEngine:
         # 1. Posicionamiento Dinámico (Precisión Quirúrgica - Phase 26)
         found_anchor = False
 
-        # If an explicit anchor_rect was provided (e.g. detected 'Firma' for UNEMPLOYMENT),
-        # prefer it over searching for 'Observaciones' so the seal is placed next to that anchor.
+        # Explicit template markers can reserve a precise box for the seal.
         if anchor_rect:
-            # Place the seal to the right of the detected anchor when possible
             try:
-                is_left_anchor = anchor_rect.x0 < (page_rect.width / 2)
-                # Prefer placing next to the anchor (to the right)
-                seal_x0 = min(anchor_rect.x1 + 6, page_rect.width - seal_w - margin)
-                seal_y0 = anchor_rect.y0 - (seal_h / 2)
+                if place_on_anchor:
+                    seal_x0 = anchor_rect.x0 + (anchor_rect.width - seal_w) / 2
+                    seal_y0 = anchor_rect.y0 + (anchor_rect.height - seal_h) / 2
+                else:
+                    seal_x0 = min(anchor_rect.x1 + 6, page_rect.width - seal_w - margin)
+                    seal_y0 = anchor_rect.y0 - (seal_h / 2)
                 # Bounds
+                seal_x0 = max(margin, min(seal_x0, page_rect.width - seal_w - margin))
                 if seal_y0 < margin:
                     seal_y0 = margin
                 if seal_y0 + seal_h > page_rect.height:
@@ -688,7 +718,7 @@ class SignatureEngine:
         
         # Collision objects: anchors + manuscript signatures
         collision_targets = []
-        if anchor_rect: collision_targets.append(anchor_rect)
+        if anchor_rect and not place_on_anchor: collision_targets.append(anchor_rect)
         if occupied_rects: collision_targets.extend(occupied_rects)
         
         for target in collision_targets:
@@ -757,7 +787,13 @@ class SignatureEngine:
         page.insert_text((fields_x, fields_y), f"Nivel: {signature_level}", fontsize=5.5, color=title_color, fontname="hebo")
         fields_y += line_spacing
         
-        page.insert_text((fields_x, fields_y), f"Documento: Recibo de Haberes", fontsize=5.5, color=text_color)
+        normalized_doc_type = str(doc_type or "").upper()
+        document_label = (
+            "Telegrama de Intimación"
+            if normalized_doc_type in {"LABOR_MODEL", "TLG-INT-001"}
+            else "Recibo de Haberes"
+        )
+        page.insert_text((fields_x, fields_y), f"Documento: {document_label}", fontsize=5.5, color=text_color)
         fields_y += line_spacing
         
         page.insert_text((fields_x, fields_y), f"CUIL: {signer_tax_id or 'N/A'}", fontsize=5.5, color=text_color)

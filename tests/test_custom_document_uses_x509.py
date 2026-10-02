@@ -54,7 +54,12 @@ def test_process_pdf_signs_custom_document_with_x509(monkeypatch, tmp_path):
 
     monkeypatch.setattr(ds, "STORAGE_ROOT", tmp_path)
     monkeypatch.setattr(ds, "get_signature_engine", lambda: FakeEngine())
-    monkeypatch.setattr(ds.DigitalSignatureEngine, "_store_signature_image", lambda *args, **kwargs: tmp_path / "sig.png")
+    def store_signature_image(*args, **kwargs):
+        signature_path = tmp_path / "sig.png"
+        signature_path.write_bytes(b"signature")
+        return signature_path
+
+    monkeypatch.setattr(ds.DigitalSignatureEngine, "_store_signature_image", store_signature_image)
     monkeypatch.setattr(ds.x509_service, "sign_pdf", fake_sign_pdf)
 
     ctx = {

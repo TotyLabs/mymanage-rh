@@ -7,6 +7,7 @@ import {
   confirmAction,
   getApiBase,
 } from '../common.js';
+const RECEIPT_PREVIEW_LIMIT = 10;
 
 function el(id, ctx = document) {
   return (ctx || document).querySelector(`#${id}`);
@@ -33,7 +34,6 @@ function createStatusBadge(status, rejectionReason) {
     badge.textContent = 'Pendiente firma empresa';
     return badge;
   }
-
 
   if (status === 'signed') {
     badge.classList.add('success');
@@ -171,6 +171,9 @@ function buildShell() {
             </thead>
             <tbody></tbody>
           </table>
+          <div class="text-center p-16">
+            <button id="btnReceiptsMore" class="btn btn-ghost btn-sm hidden" type="button">Ver más</button>
+          </div>
         </div>
       </section>
 
@@ -378,6 +381,7 @@ const dashboardStore = {
   sortField: 'full_name', // Default sort
   sortOrder: 'asc',
   selectedIds: new Set(),
+  receiptsExpanded: false,
   summary: null
 };
 
@@ -535,6 +539,7 @@ export async function render(container, params) {
     const tbody = container.querySelector('#receiptsTable tbody');
     const emptyEl = el('receiptsEmpty', container);
     const wrapEl = el('receiptsTableWrap', container);
+    const moreButton = el('btnReceiptsMore', container);
 
     tbody.innerHTML = '';
 
@@ -544,6 +549,7 @@ export async function render(container, params) {
       emptyEl.innerHTML = renderEmptyReceipts();
       emptyEl.classList.remove('hidden');
       wrapEl.classList.add('hidden');
+      moreButton?.classList.add('hidden');
 
       const emptyUploadBtn = el('btnEmptyUpload', container);
       if (emptyUploadBtn) {
@@ -555,7 +561,13 @@ export async function render(container, params) {
     emptyEl.classList.add('hidden');
     wrapEl.classList.remove('hidden');
 
-    visible.forEach((receipt) => {
+    const rowsToRender = state.receiptsExpanded ? visible : visible.slice(0, RECEIPT_PREVIEW_LIMIT);
+    if (moreButton) {
+      moreButton.classList.toggle('hidden', visible.length <= RECEIPT_PREVIEW_LIMIT);
+      moreButton.textContent = state.receiptsExpanded ? 'Ver menos' : 'Ver más';
+    }
+
+    rowsToRender.forEach((receipt) => {
       const tr = document.createElement('tr');
 
       const signUrl = receipt.signature_url || null;
@@ -659,20 +671,13 @@ export async function render(container, params) {
       if (receipt.status === 'signed') {
         const base = getApiBase();
         const url = `${base}/api/receipts/${receipt.id}/download`;
-        const sigImageUrl = `${base}/api/signatures/receipt/${receipt.id}/image`;
 
         const downloadBtn = document.createElement('button');
         downloadBtn.className = 'btn btn-ghost btn-sm';
         downloadBtn.textContent = 'Descargar PDF';
         downloadBtn.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
 
-        const evidenceBtn = document.createElement('button');
-        evidenceBtn.className = 'btn btn-ghost btn-sm';
-        evidenceBtn.textContent = 'Firma PNG';
-        evidenceBtn.title = 'Descargar evidencia de firma manuscrita';
-        evidenceBtn.addEventListener('click', () => window.open(sigImageUrl, '_blank', 'noopener'));
-
-        actions.append(downloadBtn, evidenceBtn);
+        actions.appendChild(downloadBtn);
       }
 
       if (receipt.status !== 'signed') {
@@ -1128,7 +1133,13 @@ export async function render(container, params) {
 
   el('filterStatus', container).addEventListener('change', () => {
     state.filterStatus = el('filterStatus', container).value;
+    state.receiptsExpanded = false;
     state.selectedIds.clear();
+    renderReceipts();
+  });
+
+  el('btnReceiptsMore', container).addEventListener('click', () => {
+    state.receiptsExpanded = !state.receiptsExpanded;
     renderReceipts();
   });
 
@@ -1204,6 +1215,7 @@ export async function render(container, params) {
 
   el('searchInput', container).addEventListener('input', () => {
     state.search = el('searchInput', container).value || '';
+    state.receiptsExpanded = false;
     renderReceipts();
   });
 

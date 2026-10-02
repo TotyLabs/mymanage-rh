@@ -2,6 +2,7 @@ import { apiFetch, confirmAction, el, esc, getApiBase, navigate, showToast, Stor
 import { createStatusBadge } from '../../utils-ui.js';
 import { LABELS } from '../../constants.js';
 
+
 export function getVisibleReceipts(state) {
   let visible = [...state.receipts];
 

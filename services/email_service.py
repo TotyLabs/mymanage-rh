@@ -15,8 +15,10 @@ GMAIL_FALLBACK_SECURITY=starttls
 """
 
 from email.header import Header
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Optional, List
+from typing import Any, Dict, Optional, List, Union
 
 import aiosmtplib
 
@@ -71,10 +73,22 @@ class EmailService:
         body_html: str,
         reply_to: Optional[str] = None,
         from_address: Optional[str] = None,
-    ) -> MIMEText:
+        attachments: Optional[List[Dict[str, Any]]] = None,
+    ) -> Union[MIMEText, MIMEMultipart]:
         body_html = body_html.encode("utf-8", errors="replace").decode("utf-8")
 
-        msg = MIMEText(body_html, "html", "utf-8")
+        if attachments:
+            msg = MIMEMultipart()
+            msg.attach(MIMEText(body_html, "html", "utf-8"))
+            for attachment in attachments:
+                part = MIMEApplication(
+                    attachment["content"],
+                    _subtype=attachment.get("subtype", "octet-stream"),
+                )
+                part.add_header("Content-Disposition", "attachment", filename=attachment["filename"])
+                msg.attach(part)
+        else:
+            msg = MIMEText(body_html, "html", "utf-8")
         msg["Subject"] = Header(subject, "utf-8").encode()
         msg["From"] = from_address or self.from_address
         msg["To"] = to
@@ -101,6 +115,7 @@ class EmailService:
         subject: str,
         body_html: str,
         reply_to: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ):
         if self.mode == "console":
             self._log_email(to, subject, body_html)
@@ -110,7 +125,7 @@ class EmailService:
             self._log_email(to, subject, body_html)
             return
 
-        await self._send_smtp_async(to, subject, body_html, reply_to)
+        await self._send_smtp_async(to, subject, body_html, reply_to, attachments)
 
     def send_html_sync(
         self,
@@ -118,6 +133,7 @@ class EmailService:
         subject: str,
         body_html: str,
         reply_to: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ):
         import asyncio
 
@@ -132,7 +148,7 @@ class EmailService:
             if "event loop activo" in str(e):
                 raise
 
-        asyncio.run(self.send_html(to, subject, body_html, reply_to))
+        asyncio.run(self.send_html(to, subject, body_html, reply_to, attachments))
 
     async def _send_smtp_async(
         self,
@@ -140,6 +156,7 @@ class EmailService:
         subject: str,
         body_html: str,
         reply_to: Optional[str] = None,
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ):
         if not self._has_primary_config():
             logger.error(
@@ -160,6 +177,7 @@ class EmailService:
                 body_html=body_html,
                 reply_to=reply_to,
                 from_address=self.from_address,
+                attachments=attachments,
             )
             logger.info("email.sent.primary", extra={"to": to, "subject": subject})
             metrics_registry.record_email(sent=True)
@@ -192,6 +210,7 @@ class EmailService:
                     body_html=body_html,
                     reply_to=reply_to,
                     from_address=self.fallback_user,
+                    attachments=attachments,
                 )
                 logger.info(
                     "email.sent.fallback",
@@ -228,6 +247,7 @@ class EmailService:
         body_html: str,
         reply_to: Optional[str],
         from_address: Optional[str],
+        attachments: Optional[List[Dict[str, Any]]] = None,
     ):
         security = (security or "ssl").lower()
 
@@ -240,6 +260,7 @@ class EmailService:
             body_html=body_html,
             reply_to=reply_to,
             from_address=from_address,
+            attachments=attachments,
         )
 
         use_tls = security == "ssl"

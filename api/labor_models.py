@@ -10,7 +10,7 @@ from datetime import timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import text
@@ -34,7 +34,8 @@ class UpdateLaborDocumentRequest(BaseModel):
 
 
 class EmailLaborDocumentRequest(BaseModel):
-    recipient_email: EmailStr
+    employee_id: Optional[str] = None
+    recipient_email: Optional[EmailStr] = None
 
 
 def _serialize(row) -> dict:
@@ -201,14 +202,24 @@ async def download_labor_document(document_id: str, user=Depends(require_admin),
 
 @router.post("/documents/{document_id}/sign")
 async def sign_labor_document(document_id: str, request: Request, user=Depends(require_admin), db: Session = Depends(get_db)):
-    row = _get_document(db, document_id, str(user["organization_id"]))
+    row = db.execute(text("""
+        SELECT * FROM labor_model_documents
+        WHERE id = :id AND organization_id = :org
+        FOR UPDATE
+    """), {"id": document_id, "org": user["organization_id"]}).mappings().first()
+    if not row:
+        raise HTTPException(404, "labor_document_not_found")
+    if row["status"] != "LISTO_PARA_FIRMAR":
+        raise HTTPException(409, "labor_document_not_ready_for_signature")
     missing = pending_fields(row["fields"] or {}, row["template_code"])
     if missing:
         raise HTTPException(400, {"code": "required_fields_pending", "fields": missing})
-    if not row["rendered_pdf_path"]:
+    relative = row["rendered_pdf_path"]
+    if not relative:
         raise HTTPException(400, "labor_document_must_be_rendered")
-    if row["status"] in ("FIRMADO", "ENVIADO"):
-        raise HTTPException(409, "labor_document_locked")
+    source_pdf = Path(safe_join_under_storage(relative))
+    if not source_pdf.is_file():
+        raise HTTPException(404, "labor_document_file_missing")
 
     signer = db.execute(text("""
         SELECT id, name, position, signature_image_path, signature_image_data
@@ -225,7 +236,10 @@ async def sign_labor_document(document_id: str, request: Request, user=Depends(r
         raise HTTPException(400, "company_signer_signature_missing")
 
     from modules.digital_signature import DigitalSignatureEngine, _pdf_executor
-    relative = row["rendered_pdf_path"]
+    company_cuit = db.execute(
+        text("SELECT cuit FROM organizations WHERE id = :id"),
+        {"id": user["organization_id"]},
+    ).scalar() or ""
     ctx = {
         "receipt_id": document_id,
         "organization_id": str(user["organization_id"]),
@@ -235,48 +249,82 @@ async def sign_labor_document(document_id: str, request: Request, user=Depends(r
         "source": "labor_model",
         "doc_type": "labor_model",
         "full_name": signer["name"],
-        "cuit": (db.execute(text("SELECT cuit FROM organizations WHERE id = :id"), {"id": user["organization_id"]}).scalar() or ""),
-        "user": user,
+        "cuit": company_cuit,
+        "user": {
+            "id": user["id"],
+            "role": "employer",
+            "full_name": signer["name"],
+            "dni": company_cuit,
+            "email": user.get("email"),
+            "organization_id": str(user["organization_id"]),
+        },
         "verification_id": f"LM-{document_id}",
     }
     loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(_pdf_executor, DigitalSignatureEngine.process_pdf, ctx, image_bytes)
-    final_path = Path(result["signed_pdf_path"])
-    final_relative = str(final_path.relative_to(Path(config.ALLOWED_STORAGE_DIR)))
+    final_relative = result["signed_pdf_relative"]
+    signed_hash = result["new_pdf_sha256"]
     db.execute(text("""
         UPDATE labor_model_documents
         SET final_pdf_path = :path, final_pdf_sha256 = :hash, status = 'FIRMADO',
             signed_by_user_id = :user, signed_at = :now, updated_at = :now
-        WHERE id = :id AND organization_id = :org
-    """), {"path": final_relative, "hash": result["pdf_sha256"], "user": user["id"], "now": utc_now(), "id": document_id, "org": user["organization_id"]})
+        WHERE id = :id AND organization_id = :org AND status = 'LISTO_PARA_FIRMAR'
+    """), {"path": final_relative, "hash": signed_hash, "user": user["id"], "now": utc_now(), "id": document_id, "org": user["organization_id"]})
     db.commit()
-    audit(db, user["organization_id"], "admin", user["id"], "LABOR_MODEL_SIGNED", document_id, {"signer_id": str(signer["id"]), "pdf_sha256": result["pdf_sha256"]})
+    audit(db, user["organization_id"], "admin", user["id"], "LABOR_MODEL_SIGNED", document_id, {"signer_id": str(signer["id"]), "pdf_sha256": signed_hash})
     return {"status": "signed", "document": _serialize(_get_document(db, document_id, str(user["organization_id"]))) }
 
 
-async def _send_labor_email(document_id: str, organization_id: str, recipient: str, path: str, subject: str, db_factory):
-    db = db_factory()
-    try:
-        try:
-            await EmailService().send_html(recipient, subject, f"<p>Se adjunta el documento laboral generado por MyManageRH.</p>")
-            status, error = "sent", None
-        except Exception as exc:
-            status, error = "failed", str(exc)
-        db.execute(text("""
-            INSERT INTO labor_model_email_events (labor_document_id, organization_id, recipient_email, status, error)
-            VALUES (:doc, :org, :email, :status, :error)
-        """), {"doc": document_id, "org": organization_id, "email": recipient, "status": status, "error": error})
-        db.commit()
-    finally:
-        db.close()
-
-
 @router.post("/documents/{document_id}/email")
-async def email_labor_document(document_id: str, body: EmailLaborDocumentRequest, background_tasks: BackgroundTasks, user=Depends(require_admin), db: Session = Depends(get_db)):
+async def email_labor_document(document_id: str, body: EmailLaborDocumentRequest, user=Depends(require_admin), db: Session = Depends(get_db)):
     row = _get_document(db, document_id, str(user["organization_id"]))
     relative = row["final_pdf_path"] or row["rendered_pdf_path"]
     if not relative:
         raise HTTPException(400, "labor_document_must_be_rendered")
-    from payroll_core import SessionLocal
-    background_tasks.add_task(_send_labor_email, document_id, str(user["organization_id"]), str(body.recipient_email), relative, row["title"], SessionLocal)
-    return {"status": "queued", "recipient_email": str(body.recipient_email)}
+
+    if bool(body.employee_id) == bool(body.recipient_email):
+        raise HTTPException(400, "select_exactly_one_recipient")
+
+    if body.employee_id:
+        employee = db.execute(text("""
+            SELECT email FROM employees
+            WHERE id = :employee AND organization_id = :org AND is_deleted = false
+        """), {"employee": body.employee_id, "org": user["organization_id"]}).mappings().first()
+        if not employee:
+            raise HTTPException(404, "employee_not_found")
+        if not employee["email"]:
+            raise HTTPException(400, "employee_email_not_configured")
+        recipient = employee["email"]
+    else:
+        recipient = str(body.recipient_email)
+
+    pdf_path = Path(safe_join_under_storage(relative))
+    if not pdf_path.is_file():
+        raise HTTPException(404, "labor_document_file_missing")
+
+    try:
+        await EmailService().send_html(
+            to=recipient,
+            subject=row["title"] or "Documento laboral",
+            body_html="<p>Se adjunta el documento laboral generado por MyManageRH.</p>",
+            attachments=[{
+                "filename": f"{row['template_code']}_{document_id[:8]}.pdf",
+                "content": pdf_path.read_bytes(),
+                "subtype": "pdf",
+            }],
+        )
+    except Exception as exc:
+        db.execute(text("""
+            INSERT INTO labor_model_email_events (labor_document_id, organization_id, recipient_email, status, error)
+            VALUES (:doc, :org, :email, 'failed', :error)
+        """), {"doc": document_id, "org": user["organization_id"], "email": recipient, "error": str(exc)[:1000]})
+        db.commit()
+        raise HTTPException(502, "labor_document_email_failed") from exc
+
+    db.execute(text("""
+        INSERT INTO labor_model_email_events (labor_document_id, organization_id, recipient_email, status)
+        VALUES (:doc, :org, :email, 'sent')
+    """), {"doc": document_id, "org": user["organization_id"], "email": recipient})
+    db.commit()
+    audit(db, user["organization_id"], "admin", user["id"], "LABOR_MODEL_EMAILED", document_id, {"recipient_email": recipient})
+    return {"status": "sent", "recipient_email": recipient}
