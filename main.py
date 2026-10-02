@@ -144,6 +144,10 @@ app.add_middleware(
 async def log_requests(request: Request, call_next):
     logger.info(f"REQ: {request.method} {request.url.path}")
     response = await call_next(request)
+    if request.url.path in {"/ui", "/ui/", "/ui/index.html"}:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     logger.info(f"RES: {response.status_code}")
     return response
 

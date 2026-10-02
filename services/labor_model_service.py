@@ -24,8 +24,8 @@ MODEL_CATALOG = {
         "category": "Abandono de trabajo",
         "title": "Telegrama de intimación al trabajador",
         "description": "Modelo de intimación para reanudación de tareas ante ausencia sin aviso.",
-        "version": "1.0",
-        "template_path": "Modelos Legales/TLG-INT-001 - Telegrama de intimación al trabajador.pdf",
+        "version": "1.1",
+        "template_path": "Plantilla Telegrama de Intimación MyManageRH (7).pdf",
         "fields": [
             {"key": "empresa.localidad_emision", "label": "Lugar de emisión", "group": "Automáticos", "required": True, "source": "organization.city"},
             {"key": "documento.fecha_emision", "label": "Fecha de emisión", "group": "Automáticos", "required": True, "source": "system.today"},

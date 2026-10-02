@@ -77,6 +77,14 @@ export async function render(container) {
       .labor-inline-editor { margin-top: 18px; background: #f8fafc; border: 1px solid #dfe7f3; border-radius: 14px; padding: 18px; }
       .labor-inline-editor .pdf-actions { margin-top: 18px; }
       .labor-inline-editor .variable-editor-grid { margin-top: 0; }
+      .labor-email-backdrop { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(15, 23, 42, 0.52); }
+      .labor-email-card { width: min(480px, 100%); background: #fff; border-radius: 12px; box-shadow: 0 24px 64px rgba(15, 23, 42, 0.25); }
+      .labor-email-header, .labor-email-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid #e2e8f0; }
+      .labor-email-body { display: grid; gap: 16px; padding: 20px; }
+      .labor-email-footer { justify-content: flex-end; border-top: 1px solid #e2e8f0; border-bottom: 0; }
+      .labor-sign-confirm-backdrop { position: fixed; inset: 0; z-index: 45; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(15, 23, 42, 0.52); }
+      .labor-sign-confirm-card { width: min(480px, 100%); background: #fff; border-radius: 12px; box-shadow: 0 24px 64px rgba(15, 23, 42, 0.25); }
+      .labor-sign-confirm-body { padding: 20px; color: #475569; line-height: 1.6; }
     </style>
 
     <section class="labor-models-page">
@@ -403,7 +411,7 @@ export async function render(container) {
                         <div class="context-menu hidden" data-menu-panel="${esc(doc.id)}">
                           <button data-doc-action="view" data-id="${esc(doc.id)}">Ver PDF</button>
                           <button data-doc-action="download" data-id="${esc(doc.id)}">Descargar PDF</button>
-                          <button data-doc-action="sign" data-id="${esc(doc.id)}">Firmar documento</button>
+                          ${doc.status === 'LISTO_PARA_FIRMAR' && doc.rendered_pdf_path ? `<button data-doc-action="sign" data-id="${esc(doc.id)}">Firmar Documento</button>` : ''}
                           <button data-doc-action="email" data-id="${esc(doc.id)}">Enviar por correo</button>
                           <button data-doc-action="info" data-id="${esc(doc.id)}">Información del documento</button>
                         </div>
@@ -455,9 +463,143 @@ export async function render(container) {
         if (action === 'download') openPdf(id, true);
         if (action === 'info') showDocumentInfo(id);
         if (action === 'delete') deleteDocument(id);
-        if (action === 'sign') showToast('La firma se conecta en la siguiente fase del trabajo, no en esta etapa.', 'info');
-        if (action === 'email') showToast('El envío por correo se conecta en la siguiente fase del trabajo, no en esta etapa.', 'info');
+        if (action === 'sign') showSignConfirmation(id);
+        if (action === 'email') showEmailRecipientDialog(id);
       };
+    });
+  }
+
+  function showSignConfirmation(documentId) {
+    const doc = state.documents.find((item) => item.id === documentId);
+    if (!doc || doc.status !== 'LISTO_PARA_FIRMAR' || !doc.rendered_pdf_path) {
+      showToast('El documento no está listo para firmar.', 'error');
+      return;
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'labor-sign-confirm-backdrop';
+    modal.innerHTML = `
+      <section class="labor-sign-confirm-card" role="dialog" aria-modal="true" aria-labelledby="laborSignConfirmTitle">
+        <form>
+          <header class="labor-email-header">
+            <h2 id="laborSignConfirmTitle" class="card-title">Confirmar firma</h2>
+          </header>
+          <div class="labor-sign-confirm-body">
+            <p>¿Estás seguro de que querés firmar este documento?</p>
+            <p>Se aplicarán la firma digital y el sello al PDF actual. No se volverá a generar.</p>
+            <strong>${esc(doc.title || 'Documento laboral')}</strong>
+          </div>
+          <footer class="labor-email-footer">
+            <button type="button" class="btn btn-ghost" data-sign-cancel>Volver</button>
+            <button type="submit" class="btn btn-primary">Firmar Documento</button>
+          </footer>
+        </form>
+      </section>
+    `;
+    document.body.appendChild(modal);
+
+    const form = modal.querySelector('form');
+    const close = () => modal.remove();
+    modal.querySelector('[data-sign-cancel]').addEventListener('click', close);
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) close();
+    });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const submit = form.querySelector('[type="submit"]');
+      submit.disabled = true;
+      try {
+        const result = await apiFetch(`/api/labor-models/documents/${documentId}/sign`, { method: 'POST' });
+        state.documents = state.documents.map((item) => item.id === documentId ? result.document : item);
+        close();
+        renderHistory();
+        showToast('Documento firmado y sellado correctamente.', 'success');
+      } catch (error) {
+        showToast(error?.detail || 'No se pudo firmar el documento.', 'error');
+      } finally {
+        if (submit.isConnected) submit.disabled = false;
+      }
+    });
+  }
+
+  function showEmailRecipientDialog(documentId) {
+    const modal = document.createElement('div');
+    modal.className = 'labor-email-backdrop';
+    modal.innerHTML = `
+      <section class="labor-email-card" role="dialog" aria-modal="true" aria-labelledby="laborEmailTitle">
+        <form>
+          <header class="labor-email-header">
+            <h2 id="laborEmailTitle" class="card-title">Seleccionar Destinatario</h2>
+            <button type="button" class="btn btn-ghost btn-sm" data-email-close aria-label="Cerrar">Cerrar</button>
+          </header>
+          <div class="labor-email-body">
+            <label class="variable-field">
+              <span>Destinatario</span>
+              <select class="input" name="recipient_type">
+                <option value="employee">Elegir Empleado</option>
+                <option value="other">Seleccionar Otro Destinatario</option>
+              </select>
+            </label>
+            <label class="variable-field" data-employee-recipient>
+              <span>Empleado de la empresa</span>
+              <select class="input" name="employee_id">
+                <option value="">Seleccionar empleado</option>
+                ${state.employees.map((employee) => `<option value="${esc(employee.id)}" ${employee.email ? '' : 'disabled'}>${esc(getEmployeeName(employee))}${employee.email ? ` · ${esc(employee.email)}` : ' · Sin correo'}</option>`).join('')}
+              </select>
+            </label>
+            <label class="variable-field hidden" data-other-recipient>
+              <span>Correo electrónico</span>
+              <input class="input" name="recipient_email" type="email" autocomplete="email" placeholder="nombre@empresa.com">
+            </label>
+          </div>
+          <footer class="labor-email-footer">
+            <button type="button" class="btn btn-ghost" data-email-close>Cancelar</button>
+            <button type="submit" class="btn btn-primary">Enviar Correo</button>
+          </footer>
+        </form>
+      </section>
+    `;
+    document.body.appendChild(modal);
+
+    const form = modal.querySelector('form');
+    const recipientType = form.elements.recipient_type;
+    const employeeField = modal.querySelector('[data-employee-recipient]');
+    const otherField = modal.querySelector('[data-other-recipient]');
+    const close = () => modal.remove();
+    const syncRecipientFields = () => {
+      const isEmployee = recipientType.value === 'employee';
+      employeeField.classList.toggle('hidden', !isEmployee);
+      otherField.classList.toggle('hidden', isEmployee);
+      form.elements.employee_id.required = isEmployee;
+      form.elements.recipient_email.required = !isEmployee;
+    };
+    recipientType.addEventListener('change', syncRecipientFields);
+    syncRecipientFields();
+    modal.querySelectorAll('[data-email-close]').forEach((button) => button.addEventListener('click', close));
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) close();
+    });
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const submit = form.querySelector('[type="submit"]');
+      submit.disabled = true;
+      try {
+        await ensureDocumentRendered(documentId);
+        const payload = recipientType.value === 'employee'
+          ? { employee_id: form.elements.employee_id.value }
+          : { recipient_email: form.elements.recipient_email.value.trim() };
+        const result = await apiFetch(`/api/labor-models/documents/${documentId}/email`, {
+          method: 'POST',
+          body: payload,
+        });
+        close();
+        showToast(`Correo enviado a ${result.recipient_email}`, 'success');
+      } catch (error) {
+        showToast(error?.detail || 'No se pudo enviar el correo.', 'error');
+      } finally {
+        if (submit.isConnected) submit.disabled = false;
+      }
     });
   }
 

@@ -1,11 +1,11 @@
 /**
  * Router con separación de roles y protección de rutas.
  */
-import { getMe, logoutSession } from './common.js?v=106';
-import { tosAcceptance } from './tos-acceptance.js?v=106';
-import { ROUTES } from './constants.js?v=106';
+import { getMe, logoutSession } from './common.js?v=107';
+import { tosAcceptance } from './tos-acceptance.js?v=107';
+import { ROUTES } from './constants.js?v=107';
 
-const VERSION = '106'; // Refresh history layout, employee actions, and legajo title
+const VERSION = '110'; // Add confirmation flow for labor-document signing
 
 const loadPage = (page) => import(`./pages/${page}.js?v=${VERSION}`);
 
