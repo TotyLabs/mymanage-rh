@@ -18,30 +18,288 @@ import config
 from payroll_core import ALLOWED_STORAGE_DIR, audit, safe_join_under_storage, utc_now
 
 
+def _field(key: str, label: str, marker: str, source: Optional[str] = None, required: bool = True, input_type: str = "text", options: Optional[list[str]] = None) -> dict[str, Any]:
+    field = {"key": key, "label": label, "marker": marker, "required": required, "input_type": input_type}
+    if source:
+        field["source"] = source
+    if options:
+        field["options"] = options
+    return field
+
+
 MODEL_CATALOG = {
     "TLG-INT-001": {
-        "code": "TLG-INT-001",
-        "category": "Abandono de trabajo",
-        "title": "Telegrama de intimación al trabajador",
-        "description": "Modelo de intimación para reanudación de tareas ante ausencia sin aviso.",
-        "version": "1.1",
-        "template_path": "Plantilla Telegrama de Intimación MyManageRH (7).pdf",
+        "code": "TLG-INT-001", "category": "Abandono de trabajo",
+        "model_label": "Modelo N° 1",
+        "title": "Intimación al Trabajador (Ausencia / Presentación a Trabajar)",
+        "description": "Intimación al trabajador por ausencia y presentación a trabajar.",
+        "version": "1.1", "template_path": "Modelos Laborales/Plantilla Telegrama de Intimación MyManageRH (7).pdf",
         "fields": [
-            {"key": "empresa.localidad_emision", "label": "Lugar de emisión", "group": "Automáticos", "required": True, "source": "organization.city"},
-            {"key": "documento.fecha_emision", "label": "Fecha de emisión", "group": "Automáticos", "required": True, "source": "system.today"},
-            {"key": "empresa.razon_social", "label": "Razón social", "group": "Empresa", "required": True, "source": "organization.name"},
-            {"key": "empleado.apellido_y_nombre", "label": "Nombre y apellido", "group": "Empleado", "required": True, "source": "employee.full_name"},
-            {"key": "empleado.cuil", "label": "DNI/CUIL", "group": "Empleado", "required": True, "source": "employee.cuil_or_dni"},
-            {"key": "empleado.domicilio_completo", "label": "Domicilio", "group": "Empleado", "required": True, "source": "employee.address"},
-            {"key": "incidencia.fecha_inicio_ausencia", "label": "Fecha de inicio de ausencia", "group": "Caso", "required": True, "source": "manual"},
-            {"key": "intimacion.plazo_horas", "label": "Plazo de intimación (horas)", "group": "Caso", "required": True, "default": "72", "source": "template.default"},
+            _field("empresa.localidad_emision", "Lugar de Emisión", "[Lugar de Emisión]", "organization.city"),
+            _field("documento.fecha_emision", "Fecha de Emisión", "[Fecha de Emisión]", "system.today"),
+            _field("empleado.apellido_y_nombre", "Nombre y Apellido", "[Nombre y Apellido]", "employee.full_name"),
+            _field("empleado.cuil", "CUIL / DNI", "[CUIL / DNI]", "employee.cuil_or_dni"),
+            _field("empleado.domicilio_completo", "Domicilio del Trabajador", "[Domicilio del Trabajador]", "employee.address"),
+            _field("empresa.razon_social", "Razón Social de la Empresa", "[Razón Social de la Empresa]", "organization.name"),
+            _field("incidencia.fecha_inicio_ausencia", "Fecha de Inicio de Ausencia", "[Fecha Inicio Ausencia]", input_type="date"),
         ],
-    }
+    },
+    "TLG-RRL-002": {
+        "code": "TLG-RRL-002", "category": "Abandono de trabajo", "model_label": "Modelo N° 2",
+        "title": "Notificación de Despacho por Abandono de Trabajo",
+        "description": "Notificación de despacho por abandono de trabajo.", "version": "1.0",
+        "template_path": "Modelos Laborales/Plantilla Telegrama de Ruptura Laboral MyManageRH (2).pdf",
+        "fields": [
+            _field("empresa.localidad_emision", "Lugar de Emisión", "[Lugar de Emisión]", "organization.city"),
+            _field("documento.fecha_emision", "Fecha de Emisión", "[Fecha de Emisión]", "system.today"),
+            _field("empleado.apellido_y_nombre", "Nombre y Apellido", "[Nombre y Apellido]", "employee.full_name"),
+            _field("empleado.cuil", "CUIL / DNI", "[CUIL/DNI]", "employee.cuil_or_dni"),
+            _field("empleado.domicilio_completo", "Domicilio del Trabajador", "[Domicilio del Trabajador]", "employee.address"),
+            _field("empresa.razon_social", "Razón Social de la Empresa", "[Razón Social de la Empresa]", "organization.name"),
+            _field("empresa.cuit", "CUIT de la Empresa", "[CUIT Empresa]", "organization.cuit"),
+            _field("telegrama.previo_numero", "Número del Telegrama Previo", "[Telegrama Previo N°]"),
+        ],
+    },
+    "ATD-003": {
+        "code": "ATD-003", "category": "DECLARACIONES", "model_label": "Formulario Estándar",
+        "title": "Afiliación y Declaración Jurada del Trabajador",
+        "description": "Formulario de afiliación y declaración jurada del trabajador.", "version": "1.0",
+        "template_path": "Modelos Laborales/Plantilla Declaracion Jurada Afiliacion MyManageRH.pdf",
+        "fields": [
+            _field("empresa.localidad_emision", "Lugar de Emisión", "[Lugar de Emisión]", "organization.city"),
+            _field("documento.fecha_emision", "Fecha de Emisión", "[Fecha de Emisión]", "system.today"),
+            _field("empleado.apellido_y_nombre", "Nombre y Apellido", "[Nombre y Apellido]", "employee.full_name"),
+            _field("empleado.cuil", "CUIL / DNI", "[CUIL/DNI]", "employee.cuil_or_dni"),
+            _field("empleado.domicilio_completo", "Domicilio del Trabajador", "[Domicilio del Trabajador]", "employee.address"),
+            _field("empresa.razon_social", "Razón Social de la Empresa", "[Razón Social de la Empresa]", "organization.name"),
+            _field("empresa.cuit", "CUIT de la Empresa", "[CUIT Empresa]", "organization.cuit"),
+            _field("afiliacion.afiliado", "¿Está afiliado? (SI/NO)", "[Afiliado SI/NO]", required=True, options=["SI", "NO"]),
+            _field("afiliacion.numero", "Número de Afiliado", "[N° de Afiliado (si corresponde)]", required=False),
+            _field("afiliacion.sindicato", "Nombre del Sindicato", "[Nombre del Sindicato]", required=False),
+        ],
+    },
+    "CTTD-004": {
+        "code": "CTTD-004", "category": "ASOCIACIONES PROFESIONALES", "model_label": "Modelo N° 9",
+        "title": "Contrato de Trabajo por Tiempo Determinado / Plazo Fijo (Art. 93 L.C.T.)",
+        "description": "Contrato de trabajo a plazo fijo conforme al artículo 93 L.C.T.", "version": "1.0",
+        "template_path": "Modelos Laborales/Plantilla Contrato Trabajo Plazo Fijo CTTD-004 MyManageRH.pdf",
+        "fields": [
+            _field("empresa.localidad_emision", "Lugar de Emisión", "[Lugar de Emisión]", "organization.city"),
+            _field("documento.fecha_emision", "Fecha de Emisión", "[Fecha de Emisión]", "system.today"),
+            _field("empresa.razon_social", "Razón Social", "[Razón Social de la Empresa]", "organization.name"),
+            _field("empresa.cuit", "CUIT de la Empresa", "[CUIT Empresa]", "organization.cuit"),
+            _field("empleado.apellido_y_nombre", "Nombre y Apellido", "[Nombre y Apellido]", "employee.full_name"),
+            _field("empleado.cuil", "CUIL / DNI", "[CUIL/DNI]", "employee.cuil_or_dni"),
+            _field("empleado.nacionalidad", "Nacionalidad", "[Nacionalidad]", "employee.nationality"),
+            _field("empleado.edad", "Edad", "[Edad]", "employee.age"),
+            _field("empleado.domicilio_completo", "Domicilio", "[Domicilio del Trabajador]", "employee.address"),
+            _field("contrato.justificacion", "Tareas / Justificación de Modalidad", "[Descripción de Tareas / Justificación Modalidad]"),
+            _field("contrato.fecha_fin", "Fecha de Fin del Contrato", "[Fecha Fin del Contrato]", input_type="date"),
+            _field("empleo.horario", "Horario de Trabajo", "[Horario de Trabajo]"),
+            _field("empleo.remuneracion", "Remuneración Inicial ($)", "[Remuneración Inicial ($)]"),
+            _field("empleo.incremento", "Pauta / Criterio de Incremento", "[Pauta / Criterio de Incremento]"),
+        ],
+    },
+    "CTE-005": {
+        "code": "CTE-005", "category": "ASOCIACIONES PROFESIONALES", "model_label": "Modelo N° 10",
+        "title": "Contrato de Trabajo Eventual (Arts. 68 a 74, Ley 24.013)",
+        "description": "Contrato de trabajo eventual conforme a la Ley 24.013.", "version": "1.0",
+        "template_path": "Modelos Laborales/Plantilla Contrato Trabajo Eventual CTE-005 MyManageRH.pdf",
+        "fields": [
+            _field("empresa.localidad_emision", "Lugar de Emisión", "[Lugar de Emisión]", "organization.city"),
+            _field("documento.fecha_emision", "Fecha de Emisión", "[Fecha de Emisión]", "system.today"),
+            _field("empresa.razon_social", "Razón Social", "[Razón Social de la Empresa]", "organization.name"),
+            _field("empresa.cuit", "CUIT de la Empresa", "[CUIT Empresa]", "organization.cuit"),
+            _field("empleado.apellido_y_nombre", "Nombre y Apellido", "[Nombre y Apellido]", "employee.full_name"),
+            _field("empleado.cuil", "CUIL / DNI", "[CUIL/DNI]", "employee.cuil_or_dni"),
+            _field("empleado.nacionalidad", "Nacionalidad", "[Nacionalidad]", "employee.nationality"),
+            _field("empleado.edad", "Edad", "[Edad]", "employee.age"),
+            _field("empleado.domicilio_completo", "Domicilio", "[Domicilio del Trabajador]", "employee.address"),
+            _field("empleo.puesto", "Puesto / Cargo", "[Puesto / Cargo]", "employee.job_title"),
+            _field("contrato.tareas_eventuales", "Tareas Extraordinarias y Transitorias", "[Detalle de Tareas Extraordinarias y Transitorias]"),
+            _field("empleo.horario", "Horario de Trabajo", "[Horario de Trabajo]"),
+        ],
+    },
+    "NEA-006": {
+        "code": "NEA-006", "category": "ASOCIACIONES PROFESIONALES", "model_label": "Modelo N° 11",
+        "title": "Nota del Empleador al Trabajador Notificando Inicio de Temporada (Art. 98 L.C.T.)",
+        "description": "Notificación al trabajador del inicio de temporada según el artículo 98 L.C.T.", "version": "1.0",
+        "template_path": "Modelos Laborales/Plantilla Notificacion Temporada NEA-006 MyManageRH.pdf",
+        "fields": [
+            _field("empresa.localidad_emision", "Lugar de Emisión", "[Lugar de Emisión]", "organization.city"),
+            _field("documento.fecha_emision", "Fecha de Emisión", "[Fecha de Emisión]", "system.today"),
+            _field("empresa.razon_social", "Razón Social", "[Razón Social de la Empresa]", "organization.name"),
+            _field("empresa.cuit", "CUIT de la Empresa", "[CUIT Empresa]", "organization.cuit"),
+            _field("empleado.apellido_y_nombre", "Nombre y Apellido", "[Nombre y Apellido]", "employee.full_name"),
+            _field("empleado.cuil", "CUIL / DNI", "[CUIL/DNI]", "employee.cuil_or_dni"),
+            _field("empleado.domicilio_completo", "Domicilio", "[Domicilio del Trabajador]", "employee.address"),
+            _field("temporada.dia_inicio", "Día de Inicio", "[Día de Inicio]", "system.day"),
+            _field("temporada.mes_inicio", "Mes de Inicio", "[Mes de Inicio]", "system.month_name"),
+            _field("temporada.anio_inicio", "Año de Inicio", "[Año de Inicio]", "system.year"),
+            _field("empleo.horario", "Horario de Trabajo Habitual", "[Horario de Trabajo habitual]"),
+        ],
+    },
+    "CTT-007": {
+        "code": "CTT-007", "category": "ASOCIACIONES LABORALES", "model_label": "Modelo Estándar (Arts. 96-98 L.C.T.)",
+        "title": "Contrato de Trabajo de Temporada",
+        "description": "Contrato de trabajo de temporada conforme a los artículos 96 a 98 L.C.T.", "version": "1.0",
+        "template_path": "Modelos Laborales/Plantilla Contrato Temporada CTT-007 MyManageRH.pdf",
+        "fields": [
+            _field("contrato.lugar_celebracion", "Lugar de Celebración", "[Lugar de Celebración]", "organization.city"),
+            _field("documento.dia_celebracion", "Día de Celebración", "[Día de Celebración]", "system.day"),
+            _field("documento.mes_celebracion", "Mes de Celebración", "[Mes de Celebración]", "system.month_name"),
+            _field("documento.anio_celebracion", "Año de Celebración", "[Año de Celebración]", "system.year"),
+            _field("empresa.razon_social", "Empleador", "[Nombre o Denominación del Empleador]", "organization.name"),
+            _field("empresa.domicilio", "Domicilio del Empleador", "[Domicilio del Empleador]"),
+            _field("empresa.ciudad", "Ciudad del Empleador", "[Ciudad del Empleador]", "organization.city"),
+            _field("empresa.provincia", "Provincia del Empleador", "[Provincia del Empleador]", "organization.province"),
+            _field("empresa.representante_legal", "Representante Legal", "[Representante Legal]"),
+            _field("empleado.apellido_y_nombre", "Trabajador", "[Nombre y Apellido del Trabajador]", "employee.full_name"),
+            _field("empleado.dni", "DNI", "[DNI del Trabajador]", "employee.dni"),
+            _field("empleado.cuil", "CUIL", "[CUIL del Trabajador]", "employee.cuil"),
+            _field("empleado.domicilio_completo", "Domicilio del Trabajador", "[Domicilio del Trabajador]", "employee.address"),
+            _field("empleado.ciudad", "Ciudad del Trabajador", "[Ciudad del Trabajador]", "employee.city"),
+            _field("empleado.provincia", "Provincia del Trabajador", "[Provincia del Trabajador]", "employee.province"),
+            _field("temporada.dia_inicio_ciclo", "Día de Inicio del Ciclo Anual", "[Día de Inicio del Ciclo Anual]"),
+            _field("temporada.dia_fin_ciclo", "Día de Fin del Ciclo Anual", "[Día de Fin del Ciclo Anual]"),
+            _field("empleo.tareas", "Descripción de Tareas", "[Descripción de Tareas]", "employee.task"),
+            _field("temporada.fecha_inicio", "Fecha Inicio de Temporada", "[Fecha Inicio de Temporada]", input_type="date"),
+            _field("temporada.fecha_fin", "Fecha Fin de Temporada", "[Fecha Fin de Temporada]", input_type="date"),
+            _field("empleo.modalidad_liquidacion", "Modalidad de Liquidación", "[Modalidad de Liquidación]"),
+            _field("empleo.remuneracion", "Monto del Sueldo ($)", "[Monto del Sueldo ($)]"),
+            _field("empleo.remuneracion_letras", "Monto en Letras", "[Monto en Letras]"),
+            _field("empleo.dias_jornada", "Días de Jornada Laboral", "[Días de Jornada Laboral]"),
+            _field("empleo.horario", "Horario de Trabajo", "[Horario de Trabajo]"),
+            _field("empleo.lugar_trabajo", "Lugar de Prestación de Tareas", "[Lugar de Prestación de Tareas]"),
+        ],
+    },
+    "CTP-008": {
+        "code": "CTP-008", "category": "ASOCIACIONES LABORALES", "model_label": "Modelo N° 11/1",
+        "title": "Contrato de Trabajo a Tiempo Parcial (Ley 24.465, Art. 2° / Art. 92 ter L.C.T.)",
+        "description": "Contrato de trabajo a tiempo parcial.", "version": "1.0",
+        "template_path": "Modelos Laborales/Plantilla Contrato Tiempo Parcial CTP-008 MyManageRH.pdf",
+        "fields": [
+            _field("contrato.lugar", "Lugar", "[Lugar]", "organization.city"),
+            _field("documento.dia_celebracion", "Día de Celebración", "[Día de Celebración]", "system.day"),
+            _field("documento.mes_celebracion", "Mes de Celebración", "[Mes de Celebración]", "system.month_name"),
+            _field("documento.anio_celebracion", "Año de Celebración", "[Año de Celebración]", "system.year"),
+            _field("empresa.razon_social", "Empleadora", "[Nombre o Denominación de la Empleadora]", "organization.name"),
+            _field("empresa.domicilio", "Domicilio de la Empleadora", "[Domicilio de la Empleadora]"),
+            _field("empresa.representante_legal", "Representante Legal", "[Representante Legal]"),
+            _field("empleado.apellido_y_nombre", "Trabajador", "[Nombre y Apellido del Trabajador]", "employee.full_name"),
+            _field("empleado.dni", "DNI", "[DNI del Trabajador]", "employee.dni"),
+            _field("empleado.cuil", "CUIL", "[CUIL del Trabajador]", "employee.cuil"),
+            _field("empleado.domicilio_completo", "Calle y Número", "[Calle y Número del Trabajador]", "employee.address"),
+            _field("empleado.ciudad", "Ciudad", "[Ciudad del Trabajador]", "employee.city"),
+            _field("empleado.nacionalidad", "Nacionalidad", "[Nacionalidad]", "employee.nationality"),
+            _field("empleado.estado_civil", "Estado Civil", "[Estado Civil]", "employee.marital_status"),
+            _field("empleo.tareas", "Descripción de Trabajos", "[Descripción de Trabajos]", "employee.task"),
+            _field("documento.fecha_inicio", "Fecha de Inicio del Contrato", "[Fecha de Inicio del Contrato]", input_type="date"),
+            _field("empleo.horario", "Horario de Trabajo", "[Horario de Trabajo]"),
+            _field("empleo.lugar_trabajo", "Establecimiento / Lugar de Trabajo", "[Domicilio del Establecimiento / Lugar de Trabajo]"),
+            _field("empleo.puesto", "Puesto / Función", "[Puesto / Función del Trabajador]", "employee.job_title"),
+            _field("empleo.convenio", "Convenio Colectivo", "[Número de Convenio Colectivo]", "employee.union_agreement"),
+            _field("empleo.categoria", "Categoría Profesional", "[Categoría Profesional]", "employee.category"),
+            _field("empleo.remuneracion", "Remuneración ($)", "[Monto de Remuneración en Pesos]"),
+        ],
+    },
+    "PPCT-009": {
+        "code": "PPCT-009", "category": "ASOCIACIONES LABORALES", "model_label": "Modelo N° 11/2",
+        "title": "Período de Prueba (Art. 92 bis L.C.T.) — Comunicación de Rescisión Laboral",
+        "description": "Comunicación de rescisión durante el período de prueba.", "version": "1.0",
+        "template_path": "Modelos Laborales/Plantilla Rescisión Período de Prueba PPCT-009 MyManageRH.pdf",
+        "fields": [
+            _field("contrato.lugar", "Lugar", "[Lugar]", "organization.city"),
+            _field("documento.dia_emision", "Día de Emisión", "[Día de Emisión]", "system.day"),
+            _field("documento.mes_emision", "Mes de Emisión", "[Mes de Emisión]", "system.month_name"),
+            _field("documento.anio_emision", "Año de Emisión", "[Año de Emisión]", "system.year"),
+            _field("empresa.razon_social", "Empleador", "[Nombre o Razó Social del Empleador]", "organization.name"),
+            _field("empresa.domicilio", "Domicilio del Empleador", "[Domicilio del Empleador]"),
+            _field("empleado.apellido_y_nombre", "Trabajador", "[Nombre y Apellido del Trabajador]", "employee.full_name"),
+            _field("empleado.dni", "DNI", "[DNI del Trabajador]", "employee.dni"),
+            _field("empleado.cuil", "CUIL", "[CUIL del Trabajador]", "employee.cuil"),
+            _field("contrato.fecha_rescision", "Fecha Efectiva de Rescisión", "[Fecha de Efectividad de Rescisión]", input_type="date"),
+        ],
+    },
+    "CTI-010": {
+        "code": "CTI-010", "category": "ASOCIACIONES LABORALES", "model_label": "Modelo Estándar (Ley 25.877)",
+        "title": "Contrato de Trabajo por Tiempo Indeterminado con Período de Prueba Inicial (Art. 92 bis L.C.T.)",
+        "description": "Contrato por tiempo indeterminado con período de prueba inicial.", "version": "1.0",
+        "template_path": "Modelos Laborales/Plantilla Contrato Indeterminado CTI-010 MyManageRH.pdf",
+        "fields": [
+            _field("contrato.lugar", "Lugar de Celebración", "[Lugar de celebración del contrato]", "organization.city"),
+            _field("documento.dia_celebracion", "Día de Celebración", "[Día de Celebración]", "system.day"),
+            _field("documento.mes_celebracion", "Mes de Celebración", "[Mes de Celebración]", "system.month_name"),
+            _field("documento.anio_celebracion", "Año de Celebración", "[Año de Celebración]", "system.year"),
+            _field("empresa.razon_social", "Empleador", "[Nombre o denominación del empleador]", "organization.name"),
+            _field("empresa.domicilio", "Domicilio del Empleador", "[Domicilio del Empleador]"),
+            _field("empresa.ciudad", "Ciudad del Empleador", "[Ciudad del Empleador]", "organization.city"),
+            _field("empresa.provincia", "Provincia del Empleador", "[Provincia del Empleador]", "organization.province"),
+            _field("empresa.representante_legal", "Representante Legal", "[Representante Legal]"),
+            _field("empleado.apellido_y_nombre", "Trabajador", "[Nombre y apellido del trabajador]", "employee.full_name"),
+            _field("empleado.dni", "DNI", "[DNI del Trabajador]", "employee.dni"),
+            _field("empleado.cuil", "CUIL", "[CUIL del Trabajador]", "employee.cuil"),
+            _field("empleado.domicilio_completo", "Domicilio del Trabajador", "[Domicilio del Trabajador]", "employee.address"),
+            _field("empleado.ciudad", "Ciudad del Trabajador", "[Ciudad del Trabajador]", "employee.city"),
+            _field("empleado.provincia", "Provincia del Trabajador", "[Provincia del Trabajador]", "employee.province"),
+            _field("documento.fecha_inicio", "Inicio de la Relación Laboral", "[Día de inicio de la relación laboral]", input_type="date"),
+            _field("empleo.tareas", "Descripción de Tareas", "[Descripción de Tareas]", "employee.task"),
+            _field("empleo.categoria", "Categoría Laboral", "[Categoría Laboral]", "employee.category"),
+            _field("empleo.modalidad_liquidacion", "Modalidad de Liquidación", "[Modalidad de Liquidación]"),
+            _field("empleo.remuneracion", "Monto del Sueldo ($)", "[Monto del Sueldo ($)]"),
+            _field("empleo.remuneracion_letras", "Monto en Letras", "[Monto en Letras]"),
+            _field("empleo.dias_jornada", "Días de Jornada Laboral", "[Días de Jornada Laboral]"),
+            _field("empleo.horario", "Horario de Trabajo", "[Horario de Trabajo]"),
+            _field("empleo.lugar_trabajo", "Lugar de Trabajo", "[Lugar de Trabajo]"),
+            _field("empleo.convenio", "Convenio Colectivo (CCT)", "[CCT Nº]", "employee.union_agreement"),
+        ],
+    },
+    "AAS-011": {
+        "code": "AAS-011", "category": "DISCIPLINARIAS", "model_label": "Modelo N° 133",
+        "title": "Amonestación Previa a la Aplicación de Sanciones Disciplinarias (Llegada Tarde)",
+        "description": "Amonestación previa por llegada tarde.", "version": "1.0",
+        "template_path": "Modelos Laborales/Plantilla Amonestacion Previa AAS-011 MyManageRH.pdf",
+        "fields": [
+            _field("contrato.lugar", "Lugar", "[Lugar]", "organization.city"),
+            _field("documento.dia_emision", "Día de Emisión", "[Día de Emisión]", "system.day"),
+            _field("documento.mes_emision", "Mes de Emisión", "[Mes de Emisión]", "system.month_name"),
+            _field("documento.anio_emision", "Año de Emisión", "[Año de Emisión]", "system.year"),
+            _field("empresa.razon_social", "Empleador", "[Nombre o Razón Social del Empleador]", "organization.name"),
+            _field("empresa.domicilio", "Domicilio del Empleador", "[Domicilio del Empleador]"),
+            _field("empleado.apellido_y_nombre", "Trabajador", "[Nombre y Apellido del Trabajador]", "employee.full_name"),
+            _field("empleado.dni", "DNI", "[DNI del Trabajador]", "employee.dni"),
+            _field("empleado.file_number", "Número de Legajo", "[Número de Legajo]", "employee.file_number"),
+            _field("infraccion.fecha", "Fecha de la Infracción", "[Fecha de la Infracción]", input_type="date"),
+        ],
+    },
+    "AI-012": {
+        "code": "AI-012", "category": "DISCIPLINARIAS", "model_label": "Modelo N° 134",
+        "title": "Sanción Disciplinaria / Suspensión por Ausencia Injustificada",
+        "description": "Sanción disciplinaria o suspensión por ausencia injustificada.", "version": "1.0",
+        "template_path": "Modelos Laborales/Plantilla Sanción Ausencia Injustificada AI-012 MyManageRH.pdf",
+        "fields": [
+            _field("contrato.lugar", "Lugar", "[Lugar]", "organization.city"),
+            _field("documento.dia_emision", "Día de Emisión", "[Día de Emisión]", "system.day"),
+            _field("documento.mes_emision", "Mes de Emisión", "[Mes de Emisión]", "system.month_name"),
+            _field("documento.anio_emision", "Año de Emisión", "[Año de Emisión]", "system.year"),
+            _field("empresa.razon_social", "Empleador", "[Nombre o Razón Social del Empleador]", "organization.name"),
+            _field("empresa.domicilio", "Domicilio del Empleador", "[Domicilio del Empleador]"),
+            _field("empleado.apellido_y_nombre", "Trabajador", "[Nombre y Apellido del Trabajador]", "employee.full_name"),
+            _field("empleado.dni", "DNI", "[DNI del Trabajador]", "employee.dni"),
+            _field("empleado.file_number", "Número de Legajo", "[Número de Legajo]", "employee.file_number"),
+            _field("ausencia.dia", "Día de Ausencia", "[Día de Ausencia]", input_type="date"),
+            _field("suspension.fecha_inicio", "Inicio de Suspensión", "[Fecha Inicio Suspensión]", input_type="date"),
+            _field("suspension.fecha_fin", "Fin de Suspensión", "[Fecha Fin Suspensión]", input_type="date"),
+        ],
+    },
 }
 
 
 def catalog() -> list[dict[str, Any]]:
-    return list(MODEL_CATALOG.values())
+    return [
+        {**model, "template_filename": Path(model["template_path"]).name}
+        for model in MODEL_CATALOG.values()
+    ]
 
 
 def get_model(code: str) -> dict[str, Any]:
@@ -58,7 +316,7 @@ def _address(row: Any) -> str:
     return ", ".join(part for part in (street, locality, postal) if part)
 
 
-def resolve_fields(db: Session, organization_id: str, employee_id: Optional[str] = None) -> dict[str, Any]:
+def resolve_fields(db: Session, organization_id: str, employee_id: Optional[str] = None, template_code: str = "TLG-INT-001") -> dict[str, Any]:
     organization = db.execute(text("""
         SELECT id, name, cuit, city, province, zip_code
         FROM organizations WHERE id = :org
@@ -70,7 +328,9 @@ def resolve_fields(db: Session, organization_id: str, employee_id: Optional[str]
     if employee_id:
         employee = db.execute(text("""
             SELECT id, first_name, last_name, dni, cuil, address, address_number,
-                   city, province, postal_code
+                   city, province, postal_code, nationality, birth_date,
+                   marital_status, file_number, job_title, category, task,
+                   union_agreement
             FROM employees
             WHERE id = :employee AND organization_id = :org
               AND is_deleted = false AND is_active = true
@@ -78,24 +338,43 @@ def resolve_fields(db: Session, organization_id: str, employee_id: Optional[str]
         if not employee:
             raise ValueError("employee_not_found")
 
-    today = datetime.now().strftime("%d/%m/%Y")
-    today_iso = datetime.now().strftime("%Y-%m-%d")
-    fields = {
-        "empresa.localidad_emision": organization["city"] or "",
-        "documento.fecha_emision": today,
-        "empresa.razon_social": organization["name"] or "",
-        "empleado.apellido_y_nombre": "",
-        "empleado.cuil": "",
-        "empleado.domicilio_completo": "",
-        "incidencia.fecha_inicio_ausencia": today_iso,
-        "intimacion.plazo_horas": "72",
+    now = datetime.now()
+    month_names = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+    full_name = " ".join(part for part in (employee["first_name"], employee["last_name"]) if part) if employee else ""
+    age = ""
+    if employee and employee["birth_date"]:
+        birth_date = employee["birth_date"]
+        age = str(now.year - birth_date.year - ((now.month, now.day) < (birth_date.month, birth_date.day)))
+
+    source_values = {
+        "organization.name": organization["name"] or "",
+        "organization.cuit": organization["cuit"] or "",
+        "organization.city": organization["city"] or "",
+        "organization.province": organization["province"] or "",
+        "system.today": now.strftime("%Y-%m-%d"),
+        "system.day": now.strftime("%d"),
+        "system.month_name": month_names[now.month - 1],
+        "system.year": now.strftime("%Y"),
+        "employee.full_name": full_name,
+        "employee.dni": employee["dni"] or "" if employee else "",
+        "employee.cuil": employee["cuil"] or "" if employee else "",
+        "employee.cuil_or_dni": (employee["cuil"] or employee["dni"] or "") if employee else "",
+        "employee.address": _address(employee) if employee else "",
+        "employee.city": employee["city"] or "" if employee else "",
+        "employee.province": employee["province"] or "" if employee else "",
+        "employee.nationality": employee["nationality"] or "" if employee else "",
+        "employee.age": age,
+        "employee.file_number": employee["file_number"] or "" if employee else "",
+        "employee.job_title": employee["job_title"] or "" if employee else "",
+        "employee.category": employee["category"] or "" if employee else "",
+        "employee.task": employee["task"] or "" if employee else "",
+        "employee.union_agreement": employee["union_agreement"] or "" if employee else "",
+        "employee.marital_status": employee["marital_status"] or "" if employee else "",
     }
-    if employee:
-        fields.update({
-            "empleado.apellido_y_nombre": " ".join(part for part in (employee["first_name"], employee["last_name"]) if part),
-            "empleado.cuil": employee["cuil"] or employee["dni"] or "",
-            "empleado.domicilio_completo": _address(employee),
-        })
+    fields = {}
+    for field in get_model(template_code)["fields"]:
+        source_value = source_values.get(field.get("source", ""), "")
+        fields[field["key"]] = source_value if source_value not in (None, "") else field.get("default", "")
     return fields
 
 
@@ -176,6 +455,14 @@ def render_instance(db: Session, document_id: str, organization_id: str) -> dict
     template = Path(row["template_path"])
     if not template.is_absolute():
         template = ROOT / template
+    if not template.is_file() and not Path(row["template_path"]).is_absolute():
+        relocated_template = (ROOT / "Modelos Laborales" / Path(row["template_path"]).name).resolve()
+        try:
+            relocated_template.relative_to(ROOT.resolve())
+            if relocated_template.is_file():
+                template = relocated_template
+        except ValueError:
+            pass
     if not template.exists():
         raise FileNotFoundError("labor_model_template_missing")
 
@@ -185,19 +472,21 @@ def render_instance(db: Session, document_id: str, organization_id: str) -> dict
     output.parent.mkdir(parents=True, exist_ok=True)
     document = fitz.open(str(template))
     page = document[0]
-    emission_date = _normalize_display_date(fields.get("documento.fecha_emision", "") or datetime.now().strftime("%Y-%m-%d"))
-    absence_date = _normalize_display_date(fields.get("incidencia.fecha_inicio_ausencia", "") or datetime.now().strftime("%Y-%m-%d"))
-
-    occurrences = {
-        "empresa.localidad_emision": _replace_variants(page, fields.get("empresa.localidad_emision", ""), ["[Lugar de Emisión]", "[Lugar de Emision]", "[Lugar Emisión]"]),
-        "documento.fecha_emision": _replace_variants(page, emission_date, ["[Fecha de Emisión]", "[Fecha de Emision]", "[Fecha Emision]"]),
-        "empleado.apellido_y_nombre": _replace_variants(page, fields.get("empleado.apellido_y_nombre", ""), ["[Nombre y Apellido]", "[Nombre y apellido]", "[Apellido y Nombre]"]),
-        "empleado.cuil": _replace_variants(page, fields.get("empleado.cuil", ""), ["[CUIL / DNI]", "[CUIL / Dni]", "[CUIL o DNI]"]),
-        "empleado.domicilio_completo": _replace_variants(page, fields.get("empleado.domicilio_completo", ""), ["[Domicilio del Trabajador]", "[Domicilio]"]),
-        "empresa.razon_social": _replace_variants(page, fields.get("empresa.razon_social", ""), ["[Razón Social de la Empresa]", "[Razon Social de la Empresa]", "[Razón Social]"]),
-        "incidencia.fecha_inicio_ausencia": _replace_variants(page, absence_date, ["[Fecha Inicio Ausencia]", "[Fecha de Inicio de Ausencia]", "[Fecha Inicio Ausencia ]"]),
-        "intimacion.plazo_horas": _replace_variants(page, f"{fields.get('intimacion.plazo_horas', '72')} horas", ["[72 horas]", "[72 Horas]", "72 horas"]),
-    }
+    occurrences = {}
+    for field in get_model(row["template_code"])["fields"]:
+        value = str(fields.get(field["key"], "") or "").strip()
+        if value and field.get("input_type") == "date":
+            value = _normalize_display_date(value)
+        marker = field["marker"]
+        if value:
+            occurrences[field["key"]] = _replace(page, marker, value)
+        else:
+            boxes = page.search_for(marker)
+            occurrences[field["key"]] = 0
+            if boxes and not field.get("required", True):
+                for box in boxes:
+                    page.add_redact_annot(box, fill=(1, 1, 1))
+                page.apply_redactions()
     document.set_metadata({"title": f"{row['template_code']} - MyManageRH", "subject": "Modelo Laboral"})
     document.save(str(output), garbage=4, deflate=True)
     document.close()

@@ -1,4 +1,4 @@
-import { logoutSession, showToast } from './common.js?v=107';
+import { logoutSession, showToast } from './common.js?v=114';
 
 function getLayoutType(path) {
   if (!path) return 'public';
