@@ -13,15 +13,10 @@
 *.pfx
 *.jks
 
-# ---- PRODUCTION DATA ----
-storage/
-temp/
-
-# ---- DATABASE BACKUPS / DUMPS ----
-*.sql
-*.dump
-*.backup
-*.bak
+# ---- JAVASCRIPT / NODE ----
+node_modules/
+dist/
+build/
 
 # ---- PYTHON ----
 __pycache__/
@@ -38,38 +33,23 @@ env/
 .coverage
 htmlcov/
 
-# ---- LOGS ----
+# ---- LOGS / RUNTIME ----
 *.log
 logs/
 log/
-
-# ---- RUNTIME ----
 *.pid
 *.sock
 
-# ---- GENERATED / TEMP FILES ----
+# ---- TEMPORARY FILES ----
 *.tmp
 *.temp
 *.swp
 *.swo
 *~
 
-# ---- LOCAL DATA / IMPORT-EXPORT FILES ----
-*.xlsx
-*.xls
-*.csv
-
-# ---- GENERATED DOCUMENTS ----
-*.pdf
-!Modelos Laborales/
-Modelos Laborales/*.pdf
-!Modelos Laborales/*.pdf
-
-# ---- IDE / EDITORS ----
+# ---- IDE / OS ----
 .vscode/
 .idea/
-
-# ---- OS ----
 .DS_Store
 Thumbs.db
 
@@ -78,17 +58,40 @@ backup/
 backups/
 *_backup/
 *-backup/
-# Operational/debug output
+
+# ---- PRODUCTION / LOCAL DATA ----
+storage/
+temp/
+tmp/
+
+# ---- DATABASE DUMPS / BACKUPS ----
+*.sql
+*.dump
+*.backup
+*.bak
+
+# ---- LOCAL IMPORT / EXPORT FILES ----
+*.xlsx
+*.xls
+*.csv
+
+# ---- OPERATIONAL / DEBUG OUTPUT ----
 db_output*.txt
 logs_*.txt
 logs_servicio_*.txt
 *investigation*.txt
 
-# Local/debug scripts with possible production data
+# ---- SCRATCH / LOCAL SCRIPTS ----
 scratch/
 
-# Production migration payloads/results
+# ---- PRODUCTION MIGRATION PAYLOADS / RESULTS ----
 scripts/migrations/*.json
 
-# Temporary work
-tmp/
+# ---- GENERATED PDFS ----
+*.pdf
+
+# EXCEPTION:
+# Los PDFs oficiales de plantillas laborales SÍ deben permanecer
+# versionados en el repositorio.
+!Modelos Laborales/
+!Modelos Laborales/*.pdf
