@@ -11,10 +11,11 @@ from PIL import Image
 os.environ.setdefault("SECRET_KEY", "test")
 
 from modules.signature import SignatureEngine, SignatureError
+from services.labor_model_service import MODEL_CATALOG, ROOT
 
 
 def test_tlg_int_001_seal_replaces_template_anchor(tmp_path):
-    template = Path(__file__).resolve().parents[1] / "Plantilla Telegrama de Intimación MyManageRH (7).pdf"
+    template = ROOT / MODEL_CATALOG["TLG-INT-001"]["template_path"]
     with fitz.open(template) as source:
         anchor = source[0].search_for("{{empresa.campo_firma_sello}}")[0]
 

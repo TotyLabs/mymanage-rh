@@ -61,6 +61,9 @@ log/
 
 # ---- GENERATED DOCUMENTS ----
 *.pdf
+!Modelos Laborales/
+Modelos Laborales/*.pdf
+!Modelos Laborales/*.pdf
 
 # ---- IDE / EDITORS ----
 .vscode/

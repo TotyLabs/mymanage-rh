@@ -1,4 +1,4 @@
-import { apiFetch, esc, getMe, showError, showToast } from '../common.js';
+import { apiFetch, apiUrl, esc, getAuthToken, getMe, showError, showToast } from '../common.js';
 
 function el(id, ctx = document) {
   return (ctx || document).querySelector(`#${id}`);
@@ -29,8 +29,17 @@ function canEditDocument(status) {
   return !status || ['BORRADOR', 'LISTO_PARA_FIRMAR'].includes(status);
 }
 
+function formatModelValue(value) {
+  if (value === null || value === undefined || value === '') return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  return '';
+}
+
 export async function render(container) {
-  const state = { models: [], documents: [], employees: [], organizationName: '' };
+  const state = {
+    models: [], documents: [], employees: [], organizationName: '', user: null, selectedModel: null,
+  };
 
   container.innerHTML = `
     <style>
@@ -40,6 +49,7 @@ export async function render(container) {
       .development-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: #fef3c7; color: #92400e; border: 1px solid #facc15; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
       .labor-model-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
       .labor-model-card { display: flex; flex-direction: column; justify-content: space-between; gap: 18px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 16px; background: #fff; }
+      .labor-model-card-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
       .labor-model-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
       .labor-model-form-grid label { display: block; font-size: 12px; color: #334155; }
       .labor-model-form-grid .input { width: 100%; margin-top: 6px; }
@@ -91,7 +101,6 @@ export async function render(container) {
       <div class="labor-models-hero">
         <div class="labor-models-header">
           <h1 class="card-title empresa-page-title mb-8">Modelos Laborales</h1>
-          <span class="development-badge">Sección en desarrollo</span>
         </div>
         <button id="btnLaborRefresh" class="btn btn-ghost btn-sm">Actualizar</button>
       </div>
@@ -109,7 +118,8 @@ export async function render(container) {
   async function load() {
     try {
       const me = await getMe();
-      state.organizationName = me?.organization_name || '';
+      state.user = me?.user || me;
+      state.organizationName = state.user?.organization_name || '';
       await Promise.all([
         loadModels(),
         loadDocuments(),
@@ -139,7 +149,6 @@ export async function render(container) {
 
   function renderLibrary() {
     const view = el('laborLibraryView', container);
-    const defaultModel = state.models.find((model) => model.code === 'TLG-INT-001') || state.models[0];
     const groupedModels = (state.models.length ? state.models : []).reduce((groups, model) => {
       const category = (model.category || 'General').trim() || 'General';
       if (!groups[category]) groups[category] = [];
@@ -156,82 +165,38 @@ export async function render(container) {
               <div>
                 <div class="small-muted font-mono mb-8">${esc(model.code)}</div>
                 <h2 class="card-title mb-8">${esc(model.title)}</h2>
+                <div class="small-muted mb-8">${esc(model.model_label || 'Modelo estándar')}</div>
                 <p class="small-muted">${esc(model.description || 'Modelo legal disponible para generar el PDF')}</p>
               </div>
-              <button class="btn btn-primary btn-sm btn-create-labor" data-code="${esc(model.code)}">Nuevo documento</button>
+              <div class="labor-model-card-actions">
+                <button class="btn btn-ghost btn-sm btn-download-template" data-code="${esc(model.code)}">Descargar plantilla</button>
+                <button class="btn btn-primary btn-sm btn-create-labor" data-code="${esc(model.code)}">Nuevo documento</button>
+              </div>
             </article>
           `).join('')}
         </div>
       </section>
     `).join('');
 
-    const formHtml = defaultModel ? `
+    const formHtml = state.models.length ? `
       <div class="labor-form-anchor">
         <section id="laborGenerateFormSection" class="card mb-24 p-24 labor-expand-panel hidden labor-panel-toggle-panel">
           <div class="section-label mb-12">Nuevo documento</div>
-          <h2 class="card-title mb-8">${esc(defaultModel.title || 'Telegrama de intimación')}</h2>
-          <p class="small-muted mb-20">Se genera a partir del template base del sistema y queda guardado automáticamente en Historial para administración posterior.</p>
-
-          <div class="labor-model-form-grid">
+          <h2 id="laborCreateTitle" class="card-title mb-8"></h2>
+          <p id="laborCreateDescription" class="small-muted mb-20"></p>
+          <div class="labor-model-form-grid mb-20">
             <label>
-              Empleado
+              Empleado (opcional para completar desde legajo)
               <select id="laborCreateEmployee" class="input">
-                <option value="">Seleccionar empleado</option>
-                <option value="__OTHER__">Otro</option>
-                ${state.employees.map((employee) => {
-                  const fullName = getEmployeeName(employee);
-                  return `<option value="${esc(employee.id)}">${esc(fullName)} · ${esc(employee.dni || employee.cuil || '')}</option>`;
-                }).join('')}
+                <option value="">Completar datos manualmente</option>
+                ${state.employees.map((employee) => `<option value="${esc(employee.id)}">${esc(getEmployeeName(employee))} · ${esc(employee.dni || employee.cuil || '')}</option>`).join('')}
               </select>
             </label>
-
-            <label>
-              Lugar de emisión
-              <input id="laborCreateEmissionPlace" class="input" type="text" placeholder="Ej.: Córdoba" value="${esc(state.employees[0]?.city || '')}">
-            </label>
-
-            <label>
-              Fecha de emisión
-              <input id="laborCreateEmissionDate" class="input" type="date" value="${new Date().toISOString().slice(0, 10)}">
-            </label>
-
-            <label>
-              Fecha de inicio de ausencia
-              <input id="laborCreateAbsenceStart" class="input" type="date" value="${new Date().toISOString().slice(0, 10)}">
-            </label>
-
-            <label>
-              Plazo de intimación (horas)
-              <input id="laborCreateNoticeHours" class="input" type="number" min="1" step="1" value="72">
-            </label>
-
-            <label>
-              Razón social
-              <input id="laborCreateCompanyName" class="input" type="text" value="${esc(state.organizationName || '')}" placeholder="Ej.: TEST SRL" readonly>
-            </label>
-
-            <label>
-              Nombre y apellido
-              <input id="laborCreateEmployeeName" class="input" type="text" placeholder="Ej.: Luciano Scandroli">
-            </label>
-
-            <label>
-              CUIL / DNI
-              <input id="laborCreateEmployeeCuil" class="input" type="text" placeholder="Ej.: 20-...">
-            </label>
-
-            <label>
-              Domicilio completo
-              <input id="laborCreateEmployeeAddress" class="input" type="text" placeholder="Calle, número, localidad, CP">
-            </label>
           </div>
-
+          <div id="laborCreateFields" class="labor-model-form-grid"></div>
           <div class="mt-20" style="display:flex; gap:12px; flex-wrap:wrap;">
-            <button id="btnLaborAutofill" type="button" class="btn btn-ghost btn-sm">Autocompletar</button>
-            <button id="btnGenerateLaborDocument" class="btn btn-primary">Generar PDF</button>
+            <button id="btnGenerateLaborDocument" class="btn btn-primary">Generar documento</button>
           </div>
-
-          <div id="laborInlineVariableEditor" class="labor-inline-editor hidden"></div>
         </section>
       </div>
     ` : '<div class="empty-state">No hay modelos disponibles.</div>';
@@ -247,138 +212,62 @@ export async function render(container) {
     `;
 
     const toggleForm = () => {
-      const section = container.querySelector('#laborGenerateFormSection');
-      if (!section) return;
+      const section = el('laborGenerateFormSection', container);
       const isHidden = section.classList.contains('hidden');
       section.classList.toggle('hidden', !isHidden);
       section.classList.toggle('is-open', isHidden);
-      if (isHidden) {
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      if (isHidden) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
-    const employeeSelect = el('laborCreateEmployee', container);
-    const employeeNameField = el('laborCreateEmployeeName', container);
-    const employeeCuilField = el('laborCreateEmployeeCuil', container);
-    const employeeAddressField = el('laborCreateEmployeeAddress', container);
-    const companyNameField = el('laborCreateCompanyName', container);
-
-    const syncManualEmployeeFields = () => {
-      const selectedId = employeeSelect?.value || '';
-      const isOther = selectedId === '__OTHER__';
-      const selectedEmployee = isOther ? null : getEmployeeById(state, selectedId);
-
-      if (isOther) {
-        if (!employeeNameField.dataset.default) {
-          employeeNameField.dataset.default = employeeNameField.value || '';
-        }
-        if (!employeeCuilField.dataset.default) {
-          employeeCuilField.dataset.default = employeeCuilField.value || '';
-        }
-        if (!employeeAddressField.dataset.default) {
-          employeeAddressField.dataset.default = employeeAddressField.value || '';
-        }
-        employeeNameField.value = employeeNameField.dataset.default || '';
-        employeeCuilField.value = employeeCuilField.dataset.default || '';
-        employeeAddressField.value = employeeAddressField.dataset.default || '';
-        if (companyNameField && !companyNameField.value) {
-          companyNameField.value = state.organizationName || '';
-        }
-        return;
-      }
-
-      if (!selectedEmployee) {
-        employeeNameField.value = employeeNameField.dataset.default || '';
-        employeeCuilField.value = employeeCuilField.dataset.default || '';
-        employeeAddressField.value = employeeAddressField.dataset.default || '';
-        return;
-      }
-
-      const fullName = getEmployeeName(selectedEmployee);
-      const employeeCuil = selectedEmployee.cuil || selectedEmployee.dni || '';
-      const employeeAddress = [
-        selectedEmployee.address,
-        selectedEmployee.address_number,
-        [selectedEmployee.city, selectedEmployee.province].filter(Boolean).join(', '),
-        selectedEmployee.postal_code ? `CP ${selectedEmployee.postal_code}` : '',
-      ].filter(Boolean).join(', ');
-
-      employeeNameField.value = fullName;
-      employeeCuilField.value = employeeCuil;
-      employeeAddressField.value = employeeAddress;
-      if (companyNameField && !companyNameField.value) {
-        companyNameField.value = state.organizationName || '';
-      }
+    const openModelForm = (model) => {
+      state.selectedModel = model;
+      el('laborCreateTitle', container).textContent = model.title;
+      el('laborCreateDescription', container).textContent = `${model.model_label || ''} · ${model.code} · Los campos con * son obligatorios.`;
+      el('laborCreateFields', container).innerHTML = model.fields.map((field) => {
+        const sourceValue = getInitialFieldValue(field);
+        const control = field.options?.length
+          ? `<select class="input" data-model-field="${esc(field.key)}" ${field.required ? 'required' : ''}>${field.options.map((option) => `<option value="${esc(option)}">${esc(option)}</option>`).join('')}</select>`
+          : `<input class="input" data-model-field="${esc(field.key)}" type="${field.input_type || 'text'}" value="${esc(sourceValue)}" ${field.required ? 'required' : ''}>`;
+        return `<label class="variable-field"><span>${esc(field.label)}${field.required ? ' *' : ''}</span>${control}</label>`;
+      }).join('');
+      el('laborGenerateFormSection', container).classList.remove('hidden');
+      el('laborGenerateFormSection', container).classList.add('is-open');
+      el('laborGenerateFormSection', container).scrollIntoView({ behavior: 'smooth', block: 'start' });
     };
 
-    if (employeeNameField) {
-      employeeNameField.dataset.default = employeeNameField.value || '';
-    }
-    if (employeeCuilField) {
-      employeeCuilField.dataset.default = employeeCuilField.value || '';
-    }
-    if (employeeAddressField) {
-      employeeAddressField.dataset.default = employeeAddressField.value || '';
-    }
-    if (companyNameField) {
-      companyNameField.value = state.organizationName || companyNameField.value || '';
-    }
-    employeeSelect?.addEventListener('change', syncManualEmployeeFields);
-    syncManualEmployeeFields();
-
+    view.querySelectorAll('.btn-download-template').forEach((button) => {
+      button.onclick = () => downloadBaseTemplate(button.dataset.code);
+    });
     view.querySelectorAll('.btn-create-labor').forEach((button) => {
       button.onclick = () => {
-        toggleForm();
+        const model = state.models.find((item) => item.code === button.dataset.code);
+        if (model) openModelForm(model);
       };
     });
 
-    const generateButton = el('btnGenerateLaborDocument', container);
-    generateButton?.addEventListener('click', () => generateFromCode(defaultModel?.code));
-
-    const autofillButton = el('btnLaborAutofill', container);
-    autofillButton?.addEventListener('click', async () => {
-      const employeeId = el('laborCreateEmployee', container)?.value || '';
-      if (!employeeId) {
-        showToast('Seleccioná un empleado para autocompletar.', 'error');
-        return;
-      }
-      try {
-        if (employeeId === '__OTHER__') {
-          showToast('Elegiste “Otro”. Completá manualmente los datos del trabajador y luego generá el documento.', 'info');
-          return;
-        }
-        const created = await apiFetch('/api/labor-models/documents', {
-          method: 'POST',
-          body: { template_code: defaultModel?.code || 'TLG-INT-001', employee_id: employeeId },
-        });
-        const autofilled = await apiFetch(`/api/labor-models/documents/${created.id}/autofill`, { method: 'POST' });
-        const fields = autofilled.fields || {};
-        const todayIso = new Date().toISOString().slice(0, 10);
-        el('laborCreateEmissionPlace', container).value = fields['empresa.localidad_emision'] || '';
-        el('laborCreateEmissionDate', container).value = fields['documento.fecha_emision'] || todayIso;
-        el('laborCreateAbsenceStart', container).value = fields['incidencia.fecha_inicio_ausencia'] || todayIso;
-        el('laborCreateNoticeHours', container).value = fields['intimacion.plazo_horas'] || '72';
-        el('laborCreateCompanyName', container).value = fields['empresa.razon_social'] || state.organizationName || '';
-        el('laborCreateEmployeeName', container).value = fields['empleado.apellido_y_nombre'] || '';
-        el('laborCreateEmployeeCuil', container).value = fields['empleado.cuil'] || '';
-        el('laborCreateEmployeeAddress', container).value = fields['empleado.domicilio_completo'] || '';
-        showToast('Datos del empleado cargados correctamente', 'success');
-      } catch (error) {
-        showToast(error?.detail || 'No se pudieron autocompletar los campos', 'error');
-      }
-    });
+    el('laborCreateEmployee', container).onchange = (event) => prefillFromEmployee(event.target.value);
+    el('btnGenerateLaborDocument', container).onclick = () => {
+      if (state.selectedModel) generateFromCode(state.selectedModel.code);
+    };
   }
 
   function renderHistory() {
     const view = el('laborHistoryView', container);
     const docs = state.documents.filter((doc) => doc.status !== 'ELIMINADO');
+    const historyHeader = `
+      <div class="labor-models-header mb-16">
+        <h2 class="card-title">Historial</h2>
+        <span class="development-badge">Sección en desarrollo</span>
+      </div>
+    `;
 
     if (!docs.length) {
-      view.innerHTML = '<div class="empty-state">Todavía no hay documentos laborales en historial.</div>';
+      view.innerHTML = `${historyHeader}<div class="empty-state">Todavía no hay documentos laborales en historial.</div>`;
       return;
     }
 
     view.innerHTML = `
+      ${historyHeader}
       <div class="table-container">
         <table class="table">
           <thead>
@@ -785,52 +674,114 @@ export async function render(container) {
     });
   }
 
+  function getInitialFieldValue(field) {
+    const today = new Date();
+    const sourceValues = {
+      'organization.name': state.organizationName,
+      'organization.cuit': state.user?.organization_cuit || state.user?.cuit || '',
+      'organization.city': state.user?.organization_city || state.user?.city || '',
+      'organization.province': state.user?.organization_province || state.user?.province || '',
+      'system.today': today.toISOString().slice(0, 10),
+      'system.day': String(today.getDate()).padStart(2, '0'),
+      'system.month_name': today.toLocaleDateString('es-AR', { month: 'long' }),
+      'system.year': String(today.getFullYear()),
+    };
+    return formatModelValue(sourceValues[field.source] ?? field.default ?? '');
+  }
+
+  async function downloadBaseTemplate(code) {
+    const model = state.models.find((item) => item.code === code);
+    if (!model) return;
+    try {
+      const token = getAuthToken();
+      const response = await fetch(apiUrl(`/api/labor-models/catalog/${encodeURIComponent(code)}/download`), {
+        credentials: 'include',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(token ? { Authorization: `Bearer ${token}`, 'X-Session-Token': token } : {}),
+        },
+      });
+      if (!response.ok) throw new Error('No se pudo descargar la plantilla base.');
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = model.template_filename || `${code}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      showToast(error?.detail || error.message || 'No se pudo descargar la plantilla base.', 'error');
+    }
+  }
+
+  async function prefillFromEmployee(employeeId) {
+    if (!employeeId || !state.selectedModel) return;
+    try {
+      const response = await apiFetch(`/api/employees/${employeeId}`);
+      const employee = response.employee || response;
+      const address = [
+        employee.address,
+        employee.address_number,
+        [employee.city, employee.province].filter(Boolean).join(', '),
+        employee.postal_code ? `CP ${employee.postal_code}` : '',
+      ].filter(Boolean).join(', ');
+      const sourceValues = {
+        'employee.full_name': employee.full_name || getEmployeeName(employee),
+        'employee.dni': employee.dni,
+        'employee.cuil': employee.cuil,
+        'employee.cuil_or_dni': employee.cuil || employee.dni,
+        'employee.address': address,
+        'employee.city': employee.city,
+        'employee.province': employee.province,
+        'employee.nationality': employee.nationality,
+        'employee.age': employee.birth_date ? String(new Date().getFullYear() - new Date(employee.birth_date).getFullYear()) : '',
+        'employee.file_number': employee.file_number,
+        'employee.job_title': employee.job_title,
+        'employee.category': employee.category,
+        'employee.task': employee.task,
+        'employee.union_agreement': employee.union_agreement,
+        'employee.marital_status': employee.marital_status,
+      };
+      state.selectedModel.fields.forEach((field) => {
+        if (!field.source || !(field.source in sourceValues)) return;
+        const input = container.querySelector(`[data-model-field="${CSS.escape(field.key)}"]`);
+        if (input && sourceValues[field.source]) input.value = sourceValues[field.source];
+      });
+    } catch (error) {
+      showToast(error?.detail || 'No se pudieron cargar los datos del empleado.', 'error');
+    }
+  }
+
   async function generateFromCode(templateCode) {
-    const code = templateCode || 'TLG-INT-001';
-    const employeeId = el('laborCreateEmployee', container)?.value || '';
-    const emissionPlace = el('laborCreateEmissionPlace', container)?.value.trim() || '';
-    const emissionDate = el('laborCreateEmissionDate', container)?.value || new Date().toISOString().slice(0, 10);
-    const absenceStart = el('laborCreateAbsenceStart', container)?.value || new Date().toISOString().slice(0, 10);
-    const noticeHours = el('laborCreateNoticeHours', container)?.value || '72';
-    const companyName = el('laborCreateCompanyName', container)?.value.trim() || state.organizationName || '';
-    const employeeName = el('laborCreateEmployeeName', container)?.value.trim() || '';
-    const employeeCuil = el('laborCreateEmployeeCuil', container)?.value.trim() || '';
-    const employeeAddress = el('laborCreateEmployeeAddress', container)?.value.trim() || '';
-
-    const isManualOther = employeeId === '__OTHER__';
-    if (!employeeId || (employeeId !== '__OTHER__' && !employeeId)) {
-      showToast('Seleccioná un empleado antes de generar el documento.', 'error');
+    const model = state.models.find((item) => item.code === templateCode);
+    if (!model) return;
+    const fieldsContainer = el('laborCreateFields', container);
+    const requiredFields = Array.from(fieldsContainer.querySelectorAll('[required]'));
+    const invalid = requiredFields.find((input) => !input.value.trim());
+    if (invalid) {
+      invalid.reportValidity();
+      invalid.focus();
       return;
     }
 
-    if (!absenceStart) {
-      showToast('Indicá la fecha de inicio de ausencia antes de generar el PDF.', 'error');
-      return;
-    }
-
+    const employeeId = el('laborCreateEmployee', container).value || null;
+    const fieldValues = {};
+    fieldsContainer.querySelectorAll('[data-model-field]').forEach((input) => {
+      fieldValues[input.dataset.modelField] = input.value.trim();
+    });
+    const button = el('btnGenerateLaborDocument', container);
+    button.disabled = true;
     try {
       const created = await apiFetch('/api/labor-models/documents', {
         method: 'POST',
-        body: { template_code: code, employee_id: isManualOther ? null : employeeId },
+        body: { template_code: model.code, employee_id: employeeId },
       });
-
-      const baseFields = isManualOther ? {} : (await apiFetch(`/api/labor-models/documents/${created.id}/autofill`, { method: 'POST' })).fields || {};
       const patched = await apiFetch(`/api/labor-models/documents/${created.id}`, {
         method: 'PATCH',
-        body: {
-          fields: {
-            'empresa.localidad_emision': emissionPlace || baseFields['empresa.localidad_emision'] || '',
-            'documento.fecha_emision': emissionDate || baseFields['documento.fecha_emision'] || new Date().toISOString().slice(0, 10),
-            'empresa.razon_social': companyName || baseFields['empresa.razon_social'] || state.organizationName || '',
-            'empleado.apellido_y_nombre': employeeName || baseFields['empleado.apellido_y_nombre'] || '',
-            'empleado.cuil': employeeCuil || baseFields['empleado.cuil'] || '',
-            'empleado.domicilio_completo': employeeAddress || baseFields['empleado.domicilio_completo'] || '',
-            'incidencia.fecha_inicio_ausencia': absenceStart || baseFields['incidencia.fecha_inicio_ausencia'] || new Date().toISOString().slice(0, 10),
-            'intimacion.plazo_horas': noticeHours || baseFields['intimacion.plazo_horas'] || '72',
-          },
-        },
+        body: { fields: fieldValues },
       });
-
       try {
         await apiFetch(`/api/labor-models/documents/${patched.id}/render`, { method: 'POST' });
       } catch (error) {
@@ -841,22 +792,22 @@ export async function render(container) {
           state.documents = [refreshed, ...state.documents.filter((doc) => doc.id !== refreshed.id)];
           renderHistory();
           openVariableEditor(refreshed.id, missingFields);
-          showToast('Faltan variables obligatorias para renderizar el PDF. Complete la información antes de volver a generar.', 'warning');
+          showToast('Completá los campos obligatorios para generar el documento.', 'warning');
           return;
         }
         throw error;
       }
 
-      const refreshed = await apiFetch(`/api/labor-models/documents/${patched.id}`);
+      const refreshed = await apiFetch(`/api/labor-models/documents/${created.id}`);
       state.documents = [refreshed, ...state.documents.filter((doc) => doc.id !== refreshed.id)];
       renderHistory();
-
-      const histTab = container.querySelector('[data-labor-tab="history"]');
-      histTab?.click();
-      showToast('PDF generado y guardado en Historial', 'success');
-      window.open(`/api/labor-models/documents/${refreshed.id}/download`, '_blank');
+      container.querySelector('[data-labor-tab="history"]')?.click();
+      showToast('Documento generado y guardado en Historial.', 'success');
+      window.open(`/api/labor-models/documents/${refreshed.id}/download`, '_blank', 'noopener');
     } catch (error) {
-      showToast(error?.detail || 'No se pudo generar el documento', 'error');
+      showToast(error?.detail || 'No se pudo generar el documento.', 'error');
+    } finally {
+      button.disabled = false;
     }
   }
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import unicodedata
 import uuid
 from datetime import timezone
 from pathlib import Path
@@ -19,9 +20,11 @@ from sqlalchemy.orm import Session
 import config
 from payroll_core import audit, get_db, require_admin, safe_join_under_storage, utc_now
 from services.email_service import EmailService
-from services.labor_model_service import catalog, get_model, pending_fields, render_instance, resolve_fields
+from services.labor_model_service import ROOT, catalog, get_model, pending_fields, render_instance, resolve_fields
 
 router = APIRouter(prefix="/api/labor-models", tags=["labor-models"])
+RESTRICTED_TEMPLATE_CODE = "TLG-INT-001"
+MODEL_SUPPORT_URL = "/ui/#/soporte"
 
 
 class CreateLaborDocumentRequest(BaseModel):
@@ -67,12 +70,79 @@ def _get_document(db: Session, document_id: str, organization_id: str):
     """), {"id": document_id, "org": organization_id}).mappings().first()
     if not row:
         raise HTTPException(404, "labor_document_not_found")
+    _ensure_document_model_access(db, organization_id, row["template_code"])
     return row
+
+
+def _restricted_company_names() -> set[str]:
+    raw_names = os.getenv("RESTRICTED_COMPANY_NAMES", "")
+    return {_normalize_company_name(name) for name in raw_names.split(",") if name.strip()}
+
+
+def _normalize_company_name(name: str) -> str:
+    normalized = unicodedata.normalize("NFKD", str(name))
+    return "".join(char.casefold() for char in normalized if char.isalnum())
+
+
+def _company_has_limited_model_access(user: dict) -> bool:
+    organization_name = _normalize_company_name(user.get("organization_name") or "")
+    return bool(organization_name and organization_name in _restricted_company_names())
+
+
+def _ensure_model_access(user: dict, template_code: str) -> None:
+    if _company_has_limited_model_access(user) and template_code != RESTRICTED_TEMPLATE_CODE:
+        raise HTTPException(403, {
+            "code": "labor_model_access_restricted",
+            "message": "Para solicitar acceso a todos los modelos debe contactar al administrador.",
+            "support_url": MODEL_SUPPORT_URL,
+        })
+
+
+def _ensure_document_model_access(db: Session, organization_id: str, template_code: str) -> None:
+    organization_name = db.execute(
+        text("SELECT name FROM organizations WHERE id = :org"),
+        {"org": organization_id},
+    ).scalar()
+    _ensure_model_access({"organization_name": organization_name}, template_code)
 
 
 @router.get("/catalog")
 async def get_catalog(user=Depends(require_admin)):
-    return {"models": catalog()}
+    restricted = _company_has_limited_model_access(user)
+    models = catalog()
+    if restricted:
+        models = [model for model in models if model["code"] == RESTRICTED_TEMPLATE_CODE]
+    return {
+        "models": models,
+        "access_restricted": restricted,
+        "support_url": MODEL_SUPPORT_URL,
+        "access_message": "Para solicitar acceso a todos los modelos debe contactar al administrador." if restricted else None,
+    }
+
+
+@router.get("/catalog/{template_code}/download")
+async def download_labor_template(template_code: str, user=Depends(require_admin)):
+    _ensure_model_access(user, template_code)
+    try:
+        model = get_model(template_code)
+    except ValueError as exc:
+        raise HTTPException(404, "labor_template_not_found") from exc
+
+    root = ROOT.resolve()
+    template_path = (root / model["template_path"]).resolve()
+    try:
+        template_path.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(404, "labor_template_not_found") from exc
+    if not template_path.is_file():
+        raise HTTPException(404, "labor_template_file_missing")
+
+    return FileResponse(
+        str(template_path),
+        media_type="application/pdf",
+        filename=template_path.name,
+        headers={"Cache-Control": "private, no-store"},
+    )
 
 
 @router.get("/documents")
@@ -80,8 +150,13 @@ async def list_labor_documents(user=Depends(require_admin), db: Session = Depend
     rows = db.execute(text("""
         SELECT * FROM labor_model_documents
         WHERE organization_id = :org AND status <> 'ELIMINADO'
+          AND (:restricted = false OR template_code = :allowed_code)
         ORDER BY created_at DESC
-    """), {"org": user["organization_id"]}).mappings().all()
+    """), {
+        "org": user["organization_id"],
+        "restricted": _company_has_limited_model_access(user),
+        "allowed_code": RESTRICTED_TEMPLATE_CODE,
+    }).mappings().all()
     return {"documents": [_serialize(row) for row in rows]}
 
 
@@ -91,8 +166,9 @@ async def create_labor_document(
     user=Depends(require_admin),
     db: Session = Depends(get_db),
 ):
+    _ensure_model_access(user, body.template_code)
     model = get_model(body.template_code)
-    fields = resolve_fields(db, str(user["organization_id"]), body.employee_id)
+    fields = resolve_fields(db, str(user["organization_id"]), body.employee_id, body.template_code)
     document_id = str(uuid.uuid4())
     db.execute(text("""
         INSERT INTO labor_model_documents (
@@ -167,7 +243,7 @@ async def autofill_labor_document(document_id: str, user=Depends(require_admin),
         raise HTTPException(400, "employee_required_for_autofill")
     if row["status"] in ("FIRMADO", "ENVIADO"):
         raise HTTPException(409, "labor_document_locked")
-    fields = resolve_fields(db, str(user["organization_id"]), str(row["employee_id"]))
+    fields = resolve_fields(db, str(user["organization_id"]), str(row["employee_id"]), str(row["template_code"]))
     db.execute(text("""
         UPDATE labor_model_documents
         SET fields = CAST(:fields AS jsonb), updated_at = :now
@@ -211,6 +287,7 @@ async def sign_labor_document(document_id: str, request: Request, user=Depends(r
         raise HTTPException(404, "labor_document_not_found")
     if row["status"] != "LISTO_PARA_FIRMAR":
         raise HTTPException(409, "labor_document_not_ready_for_signature")
+    _ensure_document_model_access(db, str(user["organization_id"]), row["template_code"])
     missing = pending_fields(row["fields"] or {}, row["template_code"])
     if missing:
         raise HTTPException(400, {"code": "required_fields_pending", "fields": missing})

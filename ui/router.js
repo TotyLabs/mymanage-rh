@@ -1,11 +1,11 @@
 /**
  * Router con separación de roles y protección de rutas.
  */
-import { getMe, logoutSession } from './common.js?v=107';
-import { tosAcceptance } from './tos-acceptance.js?v=107';
-import { ROUTES } from './constants.js?v=107';
+import { getMe, logoutSession } from './common.js?v=114';
+import { tosAcceptance } from './tos-acceptance.js?v=114';
+import { ROUTES } from './constants.js?v=114';
 
-const VERSION = '110'; // Add confirmation flow for labor-document signing
+const VERSION = '114'; // Rename telegram category and remove access banner
 
 const loadPage = (page) => import(`./pages/${page}.js?v=${VERSION}`);
 
