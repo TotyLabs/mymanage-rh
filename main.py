@@ -322,7 +322,7 @@ async def verify_seal_page(seal_id: str, db: Session = Depends(get_db)):
                 <div class="value">{row.seal_id}</div>
             </div>
             <div class="footer">
-                Generado y validado criptogr&aacute;ficamente por Dircom Payroll Signature Engine.
+                Generado y validado criptogr&aacute;ficamente por MyManageRH.
             </div>
         </div>
     </body>
