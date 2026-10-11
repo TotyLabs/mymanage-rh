@@ -1,11 +1,11 @@
 /**
  * Router con separación de roles y protección de rutas.
  */
-import { getMe, logoutSession } from './common.js?v=114';
-import { tosAcceptance } from './tos-acceptance.js?v=114';
-import { ROUTES } from './constants.js?v=114';
+import { getMe, logoutSession } from './common.js?v=117';
+import { tosAcceptance } from './tos-acceptance.js?v=117';
+import { ROUTES } from './constants.js?v=117';
 
-const VERSION = '114'; // Rename telegram category and remove access banner
+const VERSION = '117'; // Force refresh for independent family tab in employee legajo
 
 const loadPage = (page) => import(`./pages/${page}.js?v=${VERSION}`);
 

@@ -1,10 +1,12 @@
 import os
 import io
+import json
 from datetime import datetime
+from xml.sax.saxutils import escape
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
 from reportlab.lib.units import cm
 from sqlalchemy import text
 
@@ -22,6 +24,43 @@ class EmployeePDFService:
         self.COLOR_BG_BLOCK = colors.HexColor('#f8fafc')   # Slate 50 (Fondo sutil de datos)
         self.COLOR_BG_TITLE = colors.HexColor('#e2e8f0')   # Slate 200 (Fondo sólido de cabeceras de sección)
 
+        self.styles.add(ParagraphStyle(
+            name='DocTitle',
+            fontSize=16,
+            leading=20,
+            textColor=self.COLOR_TEXT_MAIN,
+            fontName='Helvetica-Bold',
+            alignment=1,
+        ))
+        self.styles.add(ParagraphStyle(
+            name='DocText',
+            fontSize=10,
+            leading=14,
+            textColor=self.COLOR_TEXT_MAIN,
+            fontName='Helvetica',
+        ))
+        self.styles.add(ParagraphStyle(
+            name='DocField',
+            fontSize=10,
+            leading=14,
+            textColor=self.COLOR_TEXT_MAIN,
+            fontName='Helvetica',
+        ))
+        self.styles.add(ParagraphStyle(
+            name='FormHeader',
+            fontSize=8,
+            leading=10,
+            textColor=self.COLOR_LABEL,
+            fontName='Helvetica-Bold',
+        ))
+        self.styles.add(ParagraphStyle(
+            name='FormTitle',
+            fontSize=12,
+            leading=15,
+            textColor=colors.white,
+            fontName='Helvetica-Bold',
+            alignment=1,
+        ))
         self.styles.add(ParagraphStyle(
             name='CorpTitle',
             fontSize=14,
@@ -145,6 +184,236 @@ class EmployeePDFService:
         matrix_table.setStyle(TableStyle(t_style))
         return matrix_table
 
+    def _safe_value(self, value, placeholder='—'):
+        if value is None:
+            return placeholder
+        if isinstance(value, str):
+            text = value.strip()
+            return text or placeholder
+        return str(value)
+
+    def _employee_name(self, emp):
+        return " ".join(part for part in (self._safe_value(getattr(emp, 'first_name', ''), ''), self._safe_value(getattr(emp, 'last_name', ''), '')) if part not in ('', '—')).strip() or 'Empleado'
+
+    def _address_line(self, emp):
+        street = self._safe_value(getattr(emp, 'address', ''), '')
+        number = self._safe_value(getattr(emp, 'address_number', ''), '')
+        city = self._safe_value(getattr(emp, 'city', ''), '')
+        province = self._safe_value(getattr(emp, 'province', ''), '')
+        postal = self._safe_value(getattr(emp, 'postal_code', ''), '')
+        line = f"{street} {number}".strip()
+        if city or province or postal:
+            suffix = f"{city} {province}".strip()
+            if postal:
+                suffix = f"{suffix} - CP {postal}".strip()
+            line = f"{line}, {suffix}" if line else suffix
+        return line or '—'
+
+    def _today_text(self):
+        return datetime.now().strftime('%d/%m/%Y')
+
+    def _build_form_page(self, title, body_lines, right_date=None):
+        date_text = escape(right_date or self._today_text())
+        header = Table(
+            [[Paragraph('LEGAJO DEL PERSONAL', self.styles['FormHeader']),
+              Paragraph(f'<para align="right">{date_text}</para>', self.styles['MetaValue'])]],
+            colWidths=[9.3 * cm, 9.3 * cm],
+        )
+        header.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), self.COLOR_BG_BLOCK),
+            ('LINEBELOW', (0, 0), (-1, -1), 1.1, self.COLOR_TEXT_MAIN),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        title_bar = Table(
+            [[Paragraph(escape(title.upper()), self.styles['FormTitle'])]],
+            colWidths=[18.6 * cm],
+        )
+        title_bar.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), self.COLOR_TEXT_MAIN),
+            ('BOX', (0, 0), (-1, -1), 0.8, self.COLOR_TEXT_MAIN),
+            ('TOPPADDING', (0, 0), (-1, -1), 10),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ]))
+        return [header, Spacer(1, 12), title_bar, Spacer(1, 16), *body_lines]
+
+    def _form_fields_table(self, fields):
+        rows = []
+        for index in range(0, len(fields), 2):
+            row = []
+            for label, value in fields[index:index + 2]:
+                row.extend((
+                    Paragraph(f'<b>{escape(str(label))}</b>', self.styles['MetaLabel']),
+                    Paragraph(f'<u>{escape(self._safe_value(value, "________________"))}</u>', self.styles['GridValue']),
+                ))
+            if len(row) == 2:
+                row.extend(('', ''))
+            rows.append(row)
+        table = Table(rows, colWidths=[2.35 * cm, 6.95 * cm, 2.35 * cm, 6.95 * cm])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), self.COLOR_BG_TITLE),
+            ('BACKGROUND', (2, 0), (2, -1), self.COLOR_BG_TITLE),
+            ('BACKGROUND', (1, 0), (1, -1), colors.white),
+            ('BACKGROUND', (3, 0), (3, -1), colors.white),
+            ('BOX', (0, 0), (-1, -1), 0.8, self.COLOR_BORDER),
+            ('INNERGRID', (0, 0), (-1, -1), 0.45, self.COLOR_BORDER),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 6),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+            ('TOPPADDING', (0, 0), (-1, -1), 7),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+        ]))
+        return table
+
+    def _form_message_box(self, message):
+        box = Table([[Paragraph(message, self.styles['DocText'])]], colWidths=[18.6 * cm])
+        box.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), self.COLOR_BG_BLOCK),
+            ('BOX', (0, 0), (-1, -1), 0.8, self.COLOR_BORDER),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ]))
+        return box
+
+    def _form_signature_table(self, labels):
+        cells = [Paragraph('<br/><br/>____________________________', self.styles['DocText']) for _ in labels]
+        label_cells = [Paragraph(f'<b>{escape(label)}</b>', self.styles['MetaLabel']) for label in labels]
+        widths = [18.6 * cm / len(labels)] * len(labels)
+        table = Table([cells, label_cells], colWidths=widths)
+        table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'BOTTOM'),
+            ('LINEABOVE', (0, 1), (-1, 1), 0.8, self.COLOR_BORDER),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ]))
+        return table
+
+    def _display_form_date(self, value):
+        if not value:
+            return '________________'
+        if hasattr(value, 'strftime'):
+            return value.strftime('%d/%m/%Y')
+        raw = str(value).strip()
+        try:
+            return datetime.strptime(raw[:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+        except ValueError:
+            return raw
+
+    def _build_declaration_domicilio_page(self, emp):
+        today = self._today_text()
+        body = [
+            self._form_fields_table([
+                ('Apellido y nombre', self._employee_name(emp)),
+                ('DNI', getattr(emp, 'dni', '')),
+                ('Calle', getattr(emp, 'address', '')),
+                ('Número', getattr(emp, 'address_number', '')),
+                ('Piso', getattr(emp, 'floor', '')),
+                ('Departamento', getattr(emp, 'apartment', '')),
+                ('Torre', getattr(emp, 'tower', '')),
+                ('Localidad', getattr(emp, 'city', '')),
+                ('Provincia', getattr(emp, 'province', '')),
+                ('Código postal', getattr(emp, 'postal_code', '')),
+            ]),
+            Spacer(1, 16),
+            self._form_message_box('Declaro que mi domicilio actual se encuentra situado en el lugar indicado y me comprometo a informar cualquier modificación.'),
+            Spacer(1, 42),
+            self._form_signature_table(['Firma del trabajador/a', 'Aclaración y DNI']),
+        ]
+        return self._build_form_page('DECLARACIÓN DE DOMICILIO', body, right_date=today)
+
+    def _build_family_page(self, emp):
+        today = self._today_text()
+        extra = getattr(emp, 'extra_fields', {}) or {}
+        if isinstance(extra, str):
+            try:
+                extra = json.loads(extra)
+            except (TypeError, ValueError):
+                extra = {}
+        members = extra.get('family_members', []) if isinstance(extra, dict) else []
+        body = [
+            Paragraph('<b>DATOS DEL TRABAJADOR</b>', self.styles['SectionHeaderTitle']),
+            self._form_fields_table([
+                ('Apellido y nombre', self._employee_name(emp)),
+                ('DNI', getattr(emp, 'dni', '')),
+            ]),
+            Spacer(1, 12),
+            Paragraph(f'<b>ASOCIACIONES FAMILIARES ({len(members)})</b>', self.styles['SectionHeaderTitle']),
+        ]
+        family_fields = [
+            ('Vínculo', 'vinculo'), ('C.U.I.L.', 'cuil'),
+            ('Tipo y N° documento', 'documento'), ('Apellido y nombre', 'nombre'),
+            ('Fecha de nacimiento', 'fecha_nacimiento'), ('Nivel escolar', 'nivel_escolar'),
+            ('Documentación entregada', 'documentacion'), ('Tomo', 't'),
+            ('Folio', 'f'), ('Acta', 'acta'),
+        ]
+        if members:
+            for index, member in enumerate(members, start=1):
+                body.extend([
+                    Spacer(1, 6),
+                    Paragraph(f'<b>FAMILIAR {index}</b>', self.styles['MetaLabel']),
+                    self._form_fields_table([(label, member.get(key, '')) for label, key in family_fields]),
+                ])
+        else:
+            body.extend([Spacer(1, 6), self._form_fields_table([(label, '') for label, _ in family_fields])])
+        body.extend([
+            Spacer(1, 12),
+            self._form_message_box('Por medio de la presente y de acuerdo a la Ley 22.163, Art. 2° inc. "C", se solicita informar y remitir la documentación correspondiente a las cargas de familia. Me responsabilizo de la exactitud de los datos arriba mencionados, me comprometo a desempeñar con eficiencia mis tareas y a cumplir los reglamentos en vigencia, así como también a entregar la documentación requerida por la empresa en un plazo no mayor de sesenta (60) días.'),
+            Spacer(1, 28),
+            self._form_signature_table(['Firma del trabajador/a', 'Aclaración y DNI']),
+        ])
+        return self._build_form_page('ASOCIACIONES FAMILIARES Y CARGAS DE FAMILIA', body, right_date=today)
+
+    def _build_ropa_page(self, emp):
+        today = self._today_text()
+        extra = getattr(emp, 'extra_fields', {}) or {}
+        if isinstance(extra, str):
+            try:
+                extra = json.loads(extra)
+            except (TypeError, ValueError):
+                extra = {}
+        clothes = extra.get('ropa_trabajo', {}) if isinstance(extra, dict) else {}
+        body = [
+            self._form_fields_table([
+                ('Empleado/a', self._employee_name(emp)),
+                ('DNI', getattr(emp, 'dni', '')),
+                ('Obra / lugar de trabajo', getattr(emp, 'work_location', '')),
+                ('Período desde', self._display_form_date(clothes.get('desde'))),
+                ('Período hasta', self._display_form_date(clothes.get('hasta'))),
+                ('Vencimiento de la entrega', self._display_form_date(clothes.get('vencimiento'))),
+                ('Próximo vencimiento', self._display_form_date(clothes.get('proximo_vencimiento'))),
+            ]),
+            Spacer(1, 12),
+            self._form_message_box('Período de cumplimiento Art. 35 Conv. 76/75. Res. M.T. 98/86. Se deja constancia de la entrega de ropa de trabajo correspondiente al período consignado.'),
+            Spacer(1, 42),
+            self._form_signature_table(['Firma del trabajador/a', 'Aclaración y DNI']),
+        ]
+        return self._build_form_page('CONSTANCIA DE ENTREGA DE ROPA DE TRABAJO', body, right_date=today)
+
+    def _build_sindicato_page(self, emp):
+        today = self._today_text()
+        body = [
+            self._form_fields_table([
+                ('Apellido y nombre', self._employee_name(emp)),
+                ('DNI', getattr(emp, 'dni', '')),
+                ('Sindicato', getattr(emp, 'union', '')),
+                ('N° de afiliado', getattr(emp, 'union_number', '')),
+                ('N° de miembro', getattr(emp, 'union_member_number', '')),
+            ]),
+            Spacer(1, 16),
+            self._form_message_box('Sr. Empleador: solicito se me efectúe el aporte sindical voluntario con destino al sindicato consignado.'),
+            Spacer(1, 12),
+            Paragraph('<b>Autorizo el aporte sindical voluntario:</b> &nbsp;&nbsp;&nbsp; [  ] SI &nbsp;&nbsp;&nbsp; [  ] NO', self.styles['DocText']),
+            Spacer(1, 42),
+            self._form_signature_table(['Firma del trabajador/a', 'Aclaración y DNI']),
+        ]
+        return self._build_form_page('DECLARACIÓN DE AFILIACIÓN SINDICAL', body, right_date=today)
+
     def generate_record_pdf(self, employee_id: str, organization_id: str) -> bytes:
         emp = self.db.execute(
             text("SELECT * FROM employees WHERE id = :id AND organization_id = :org"),
@@ -160,8 +429,7 @@ class EmployeePDFService:
         ).fetchone()
 
         buffer = io.BytesIO()
-        
-        # Configuración optimizada de márgenes para forzar ocupación simétrica de 1 sola página
+
         doc = SimpleDocTemplate(
             buffer,
             pagesize=A4,
@@ -173,26 +441,23 @@ class EmployeePDFService:
 
         elements = []
 
-        # ==========================================
-        # HEADER MATRICIAL TÉCNICO
-        # ==========================================
         logo = None
-        if org and org.logo_path and os.path.exists(org.logo_path):
+        if org and getattr(org, 'logo_path', None) and os.path.exists(org.logo_path):
             try:
                 logo = Image(org.logo_path, width=1.6*cm, height=1.6*cm, kind='proportional')
-            except:
+            except Exception:
                 logo = None
-        
+
         title_block = [
-            Paragraph(f"<b>{org.name.upper() if org else 'EMPRESA'}</b>", self.styles['CorpTitle']),
+            Paragraph(f"<b>{getattr(org, 'name', 'EMPRESA').upper() if org else 'EMPRESA'}</b>", self.styles['CorpTitle']),
             Spacer(1, 3),
             Paragraph("FICHA DE REGISTRO / LEGAJO DE PERSONAL", self.styles['CorpSubtitle'])
         ]
-        
+
         meta_table_data = [
             [Paragraph("Registro", self.styles['MetaLabel']), Paragraph("REG-RH-004", self.styles['MetaValue'])],
             [Paragraph("Versión", self.styles['MetaLabel']), Paragraph("1.2", self.styles['MetaValue'])],
-            [Paragraph("Fecha", self.styles['MetaLabel']), Paragraph(datetime.now().strftime('%d/%m/%Y'), self.styles['MetaValue'])],
+            [Paragraph("Fecha", self.styles['MetaLabel']), Paragraph(self._today_text(), self.styles['MetaValue'])],
             [Paragraph("Página", self.styles['MetaLabel']), Paragraph("1 de 1", self.styles['MetaValue'])]
         ]
         meta_table = Table(meta_table_data, colWidths=[1.8*cm, 2.7*cm], rowHeights=[12, 12, 12, 12])
@@ -207,7 +472,6 @@ class EmployeePDFService:
             ('BACKGROUND', (0,0), (0,-1), self.COLOR_BG_BLOCK),
         ]))
 
-        # Ajuste de ancho total a 18.6 cm para mantener simetría con el nuevo layout
         header_table = Table([[logo, title_block, meta_table]], colWidths=[2.2*cm, 11.9*cm, 4.5*cm])
         header_table.setStyle(TableStyle([
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
@@ -219,86 +483,59 @@ class EmployeePDFService:
         elements.append(header_table)
         elements.append(Spacer(1, 14))
 
-
-
-        # ==========================================
-        # BLOQUE 1: Datos Personales
-        # ==========================================
         personal_data = [
-            ("Apellido y Nombre", f"{emp.last_name or ''}, {emp.first_name or ''}".strip(", ")),
-            ("Documento (DNI)", emp.dni),
-            ("CUIL", emp.cuil),
-            ("Fecha de Nacimiento", emp.birth_date.strftime('%d/%m/%Y') if emp.birth_date else "—"),
-            ("Email", emp.email),
-            ("Teléfono de Contacto", emp.phone),
-            ("Domicilio", f"{emp.address or ''}{(' ' + emp.address_number) if emp.address_number else ''}".strip()),
-            ("Localidad / Provincia", f"{emp.city or ''} {emp.province or ''}".strip())
+            ("Apellido y Nombre", f"{self._safe_value(getattr(emp, 'last_name', ''), '')}, {self._safe_value(getattr(emp, 'first_name', ''), '')}".strip(", ")),
+            ("Documento (DNI)", self._safe_value(getattr(emp, 'dni', ''), '—')),
+            ("CUIL", self._safe_value(getattr(emp, 'cuil', ''), '—')),
+            ("Fecha de Nacimiento", getattr(emp, 'birth_date', None).strftime('%d/%m/%Y') if getattr(emp, 'birth_date', None) else '—'),
+            ("Email", self._safe_value(getattr(emp, 'email', ''), '—')),
+            ("Teléfono de Contacto", self._safe_value(getattr(emp, 'phone', ''), '—')),
+            ("Domicilio", self._safe_value(getattr(emp, 'address', ''), '') + (f" {self._safe_value(getattr(emp, 'address_number', ''), '')}" if self._safe_value(getattr(emp, 'address_number', ''), '') != '—' else '') if getattr(emp, 'address', None) else '—'),
+            ("Localidad / Provincia", f"{self._safe_value(getattr(emp, 'city', ''), '')} {self._safe_value(getattr(emp, 'province', ''), '')}".strip() or '—')
         ]
         elements.append(self._create_matrix_section("Datos Personales", personal_data))
         elements.append(Spacer(1, 14))
 
-
-
-        # ==========================================
-        # BLOQUE 2: Datos Laborales
-        # ==========================================
-        # Tratamiento estricto anti-decimales para el Nro. de Legajo
-        file_num_raw = emp.file_number
+        file_num_raw = getattr(emp, 'file_number', None)
         if file_num_raw is not None:
             try:
-                # Si es flotante o string convertible, remueve el ".0" transformándolo en entero puro
                 file_number_clean = str(int(float(file_num_raw)))
             except (ValueError, TypeError):
-                # Si contiene letras o caracteres especiales, lo expone tal como está en la DB
                 file_number_clean = str(file_num_raw)
         else:
-            file_number_clean = "—"
+            file_number_clean = '—'
 
-        seniority = self._calculate_seniority_internal(emp.hire_date)
+        seniority = self._calculate_seniority_internal(getattr(emp, 'hire_date', None))
         laboral_data = [
             ("Nro. Legajo Interno", file_number_clean),
-            ("Fecha de Ingreso", emp.hire_date.strftime('%d/%m/%Y') if emp.hire_date else "—"),
-            ("Puesto / Cargo", emp.job_title),
+            ("Fecha de Ingreso", getattr(emp, 'hire_date', None).strftime('%d/%m/%Y') if getattr(emp, 'hire_date', None) else '—'),
+            ("Puesto / Cargo", self._safe_value(getattr(emp, 'job_title', ''), '—')),
             ("Antigüedad", seniority),
-            ("Tipo de Contrato", emp.hire_type),
-            ("Sección", emp.work_location),
-            ("Centro de Costos", emp.cost_center),
-            ("Obra Social", emp.health_insurance)
+            ("Tipo de Contrato", self._safe_value(getattr(emp, 'hire_type', ''), '—')),
+            ("Sección", self._safe_value(getattr(emp, 'work_location', ''), '—')),
+            ("Centro de Costos", self._safe_value(getattr(emp, 'cost_center', ''), '—')),
+            ("Obra Social", self._safe_value(getattr(emp, 'health_insurance', ''), '—'))
         ]
         elements.append(self._create_matrix_section("Datos Laborales", laboral_data))
         elements.append(Spacer(1, 14))
 
-
-
-        # ==========================================
-        # BLOQUE 3: Datos Bancarios
-        # ==========================================
         bank_data = [
-            ("Entidad Bancaria", emp.bank),
-            ("Tipo de Cuenta", emp.account_type),
-            ("Número de Cuenta", emp.account_number),
-            ("CBU", emp.cbu),
-            ("Alias", emp.bank_alias),
-            ("Forma de Pago", emp.payment_method)
+            ("Entidad Bancaria", self._safe_value(getattr(emp, 'bank', ''), '—')),
+            ("Tipo de Cuenta", self._safe_value(getattr(emp, 'account_type', ''), '—')),
+            ("Número de Cuenta", self._safe_value(getattr(emp, 'account_number', ''), '—')),
+            ("CBU", self._safe_value(getattr(emp, 'cbu', ''), '—')),
+            ("Alias", self._safe_value(getattr(emp, 'bank_alias', ''), '—')),
+            ("Forma de Pago", self._safe_value(getattr(emp, 'payment_method', ''), '—'))
         ]
         elements.append(self._create_matrix_section("Datos Bancarios", bank_data))
-
-        # Espaciador incrementado con precisión para empujar el footer hacia la base de la hoja
         elements.append(Spacer(1, 45))
 
-
-
-        # ==========================================
-        # FOOTER: Área de Firma Técnica Unificada
-        # ==========================================
         sig_data = [
             [""],
             [Paragraph("Firma del Empleado", self.styles['GridLabel'])],
             [Paragraph("Aclaración:", self.styles['GridLabel'])],
             [Paragraph("Fecha: ____/____/_______", self.styles['GridLabel'])]
         ]
-        
-        # Ampliamos la altura de firma (50) para un calce perfecto en la base
         sig_table = Table(sig_data, colWidths=[7.5*cm], rowHeights=[50, 14, 14, 14])
         sig_table.setStyle(TableStyle([
             ('ALIGN', (0,0), (-1,-1), 'LEFT'),
@@ -307,23 +544,27 @@ class EmployeePDFService:
             ('TOPPADDING', (0,1), (-1,-1), 5),
             ('BOTTOMPADDING', (0,0), (-1,-1), 2),
         ]))
-        
-        # Envoltorio escalado al ancho total de 18.6 cm para un centrado perfecto
         footer_wrapper = Table([[sig_table]], colWidths=[18.6*cm])
         footer_wrapper.setStyle(TableStyle([
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
             ('VALIGN', (0,0), (-1,-1), 'TOP'),
-            ('LEFTPADDING', (0,0), (-1,-1), 5.55*cm), 
+            ('LEFTPADDING', (0,0), (-1,-1), 5.55*cm),
         ]))
-        
         elements.append(footer_wrapper)
 
-        # Compilación final del lienzo corporativo de una página
-        full_name = " ".join(part for part in (emp.first_name, emp.last_name) if part).strip() or "Empleado"
+        elements.append(PageBreak())
+        elements.extend(self._build_declaration_domicilio_page(emp))
+        elements.append(PageBreak())
+        elements.extend(self._build_family_page(emp))
+        elements.append(PageBreak())
+        elements.extend(self._build_ropa_page(emp))
+        elements.append(PageBreak())
+        elements.extend(self._build_sindicato_page(emp))
 
+        full_name = self._employee_name(emp)
         def set_pdf_metadata(canvas, _document):
             canvas.setTitle(f"LEGAJO - {full_name}")
-            canvas.setAuthor(org.name if org else "MyManageRH")
+            canvas.setAuthor(getattr(org, 'name', 'MyManageRH') if org else 'MyManageRH')
 
         doc.build(elements, onFirstPage=set_pdf_metadata)
         return buffer.getvalue()
