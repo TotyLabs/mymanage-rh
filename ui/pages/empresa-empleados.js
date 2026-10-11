@@ -39,6 +39,11 @@ function badgeForEmpStatus(status) {
   return span;
 }
 
+function extraFieldValue(emp, key) {
+  const value = emp.extra_fields?.[key];
+  return value && typeof value === 'object' && 'value' in value ? value.value : (value || '');
+}
+
 function openUiModal(id, container) {
   const modal = el(id, container);
   if (!modal) return;
@@ -62,6 +67,85 @@ function resetTabs(container) {
 
   if (firstBtn) firstBtn.classList.add('active');
   if (firstPanel) firstPanel.classList.remove('hidden');
+}
+
+function renderFamilyMembers(container) {
+  const list = el('familyMembersList', container);
+  const counter = el('familyMembersCounter', container);
+  const hidden = el('empFamilyMembers', container);
+  if (!list || !counter || !hidden) return;
+
+  let items = [];
+  try {
+    items = JSON.parse(hidden.value || '[]');
+  } catch {
+    items = [];
+  }
+
+  list.innerHTML = '';
+  counter.textContent = `Cantidad: ${items.length}`;
+
+  items.forEach((member, index) => {
+    const card = document.createElement('div');
+    card.className = 'card p-12';
+
+    const header = document.createElement('div');
+    header.className = 'flex items-center justify-between mb-12';
+    const title = document.createElement('strong');
+    title.textContent = `Familiar ${index + 1}`;
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn btn-ghost btn-sm';
+    removeBtn.textContent = 'Quitar';
+    removeBtn.onclick = () => {
+      const current = JSON.parse(hidden.value || '[]');
+      current.splice(index, 1);
+      hidden.value = JSON.stringify(current);
+      renderFamilyMembers(container);
+    };
+    header.append(title, removeBtn);
+    card.appendChild(header);
+
+    const grid = document.createElement('div');
+    grid.className = 'empresa-form-grid';
+
+    const fields = [
+      ['vinculo', 'Vínculo'],
+      ['cuil', 'C.U.I.L.'],
+      ['documento', 'Tipo y N° Documento'],
+      ['nombre', 'Apellido y Nombre'],
+      ['fecha_nacimiento', 'F. Nac.'],
+      ['documentacion', 'Documentación Entregada'],
+      ['t', 'T°'],
+      ['f', 'F°'],
+      ['acta', 'ACTA'],
+      ['nivel_escolar', 'Nivel escolar'],
+    ];
+
+    fields.forEach(([field, label]) => {
+      const group = document.createElement('div');
+      group.className = 'form-group';
+      const labelEl = document.createElement('label');
+      labelEl.textContent = label;
+      const input = document.createElement('input');
+      input.className = 'input';
+      if (field === 'fecha_nacimiento') input.type = 'date';
+      input.value = member[field] || '';
+      input.dataset.field = field;
+      input.dataset.index = String(index);
+      input.addEventListener('input', (event) => {
+        const current = JSON.parse(hidden.value || '[]');
+        current[index] = current[index] || {};
+        current[index][field] = event.target.value;
+        hidden.value = JSON.stringify(current);
+      });
+      group.append(labelEl, input);
+      grid.appendChild(group);
+    });
+
+    card.appendChild(grid);
+    list.appendChild(card);
+  });
 }
 
 function formatFullAddress(emp) {
@@ -163,6 +247,7 @@ export async function render(container) {
           <div class="modal-body">
             <div id="employeeMsg" class="mb-16"></div>
             <input type="hidden" id="empId" />
+            <input type="hidden" id="empFamilyMembers" value="[]" />
 
             <div class="empresa-tabs-scroll">
               <div class="empresa-tabs-row">
@@ -171,6 +256,7 @@ export async function render(container) {
                 <button class="tab-btn" data-tab="tab-afip">AFIP</button>
                 <button class="tab-btn" data-tab="tab-laborales">Laborales</button>
                 <button class="tab-btn" data-tab="tab-otros-datos">Otros Datos</button>
+                <button class="tab-btn" data-tab="tab-familia">Asociaciones Familiares</button>
                 <button class="tab-btn" data-tab="tab-liquidacion">Liquidacion</button>
               </div>
             </div>
@@ -209,8 +295,23 @@ export async function render(container) {
                 </div>
 
                 <div class="form-group">
-                  <label for="empDocNumber">Nro documento</label>
-                  <input class="input" id="empDocNumber" placeholder="Si es distinto al DNI" />
+                  <label for="empDocNumber">Nro documento / expediente</label>
+                  <input class="input" id="empDocNumber" placeholder="Si es distinto al DNI o si corresponde expediente" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empFloor">Piso</label>
+                  <input class="input" id="empFloor" placeholder="4" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empApartment">Depto</label>
+                  <input class="input" id="empApartment" placeholder="A" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empTower">Torre</label>
+                  <input class="input" id="empTower" placeholder="Torre 1" />
                 </div>
 
                 <div class="form-group">
@@ -265,6 +366,11 @@ export async function render(container) {
                 </div>
 
                 <div class="form-group">
+                  <label for="empParaje">Paraje / barrio</label>
+                  <input class="input" id="empParaje" />
+                </div>
+
+                <div class="form-group">
                   <label for="empCity">Localidad / Ciudad</label>
                   <input class="input" id="empCity" placeholder="CABA" />
                 </div>
@@ -302,6 +408,16 @@ export async function render(container) {
                 <div class="form-group">
                   <label for="empUnionNumber">Nro afiliado sindicato</label>
                   <input class="input" id="empUnionNumber" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empUnionMemberNumber">Nro afiliado / miembro</label>
+                  <input class="input" id="empUnionMemberNumber" placeholder="Nº de asociado / miembro" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empUnemploymentFundAccount">Cuenta fondo de desempleo</label>
+                  <input class="input" id="empUnemploymentFundAccount" placeholder="Cuenta / N° fondo desempleo" />
                 </div>
               </div>
             </div>
@@ -372,6 +488,11 @@ export async function render(container) {
                 <div class="form-group">
                   <label for="empCostCenter">Centro de costo</label>
                   <input class="input" id="empCostCenter" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empLegajoNumber">Leg Nº</label>
+                  <input class="input" id="empLegajoNumber" placeholder="Número de legajo interno" />
                 </div>
 
                 <div class="form-group">
@@ -447,10 +568,53 @@ export async function render(container) {
                   <label for="empDatosFamiliares">Datos Familiares</label>
                   <textarea class="input" id="empDatosFamiliares" placeholder="¿Tiene hijos? Nombres. ¿Tiene cónyuge? Nombre. Otros datos familiares."></textarea>
                 </div>
+
+                <div class="form-group empresa-form-full">
+                  <label>Entrega de ropa de trabajo</label>
+                </div>
+
+                <div class="form-group">
+                  <label for="empCardNumber">N° de tarjeta</label>
+                  <input class="input" id="empCardNumber" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empRopaDesde">Período desde</label>
+                  <input class="input" id="empRopaDesde" type="date" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empRopaHasta">Período hasta</label>
+                  <input class="input" id="empRopaHasta" type="date" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empRopaVencimiento">Vencimiento de entrega</label>
+                  <input class="input" id="empRopaVencimiento" type="date" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empRopaProximoVencimiento">Próximo vencimiento</label>
+                  <input class="input" id="empRopaProximoVencimiento" type="date" />
+                </div>
               </div>
             </div>
 
-            <!-- 6. Liquidacion -->
+            <!-- 6. Asociaciones Familiares -->
+            <div id="tab-familia" class="tab-panel hidden">
+              <div class="empresa-form-grid">
+                <div class="form-group empresa-form-full">
+                  <div class="flex items-center justify-between mb-12">
+                    <label class="mb-0">Asociaciones Familiares</label>
+                    <button type="button" id="btnAddFamilyMember" class="btn btn-ghost btn-sm">+ Agregar</button>
+                  </div>
+                  <div id="familyMembersCounter" class="small-muted mb-12">Cantidad: 0</div>
+                  <div id="familyMembersList" class="flex-col gap-12"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 7. Liquidacion -->
             <div id="tab-liquidacion" class="tab-panel hidden">
               <div class="empresa-form-grid">
                 <div class="form-group">
@@ -459,6 +623,11 @@ export async function render(container) {
                     <option value="">Seleccionar banco...</option>
                   </select>
                   <input type="hidden" id="empBank" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empBankBranch">Sucursal bancaria</label>
+                  <input class="input" id="empBankBranch" />
                 </div>
 
                 <div class="form-group">
@@ -1037,21 +1206,18 @@ export async function render(container) {
     el('employeeMsg', container).textContent = '';
     el('displaySeniority', container).textContent = '-';
 
-    const fields = [
-      'empFirstName', 'empLastName', 'empDni', 'empCuil', 'empBirthDate', 'empGender', 'empMaritalStatus', 'empNationality',
-      'empEmail', 'empPhone', 'empAddress', 'empAddressNumber', 'empCity', 'empProvince', 'empPostalCode',
-      'empDocType', 'empDocNumber', 'empHealthInsurance', 'empHealthInsuranceNumber', 'empUnion', 'empUnionNumber',
-      'empFileNumber', 'empIericNumber', 'empHireDate', 'empJobTitle', 'empCategory', 'empTask', 'empCostCenter', 'empUnionAgreement',
-    ];
-
-    fields.forEach((id) => {
-      const field = el(id, container);
-      if (field) {
-        field.value = id === 'empDocType' ? 'DNI' : (id === 'empStatus' ? 'pre_registered' : '');
-      }
+    container.querySelectorAll('#employeeModal input, #employeeModal select, #employeeModal textarea').forEach((field) => {
+      if (field.id === 'empId' || field.id === 'empFamilyMembers') return;
+      field.value = '';
     });
+    el('empDocType', container).value = 'DNI';
+    el('empStatus', container).value = 'pre_registered';
+    el('empPaymentMethod', container).value = 'transferencia';
 
     el('groupTermination', container).classList.add('hidden');
+    const familyHidden = el('empFamilyMembers', container);
+    if (familyHidden) familyHidden.value = '[]';
+    renderFamilyMembers(container);
     resetTabs(container);
     openUiModal('employeeModal', container);
   }
@@ -1084,6 +1250,9 @@ export async function render(container) {
         empPhone: emp.phone,
         empAddress: emp.address,
         empAddressNumber: emp.address_number,
+        empFloor: emp.floor || extraFieldValue(emp, 'floor'),
+        empApartment: emp.apartment || extraFieldValue(emp, 'apartment'),
+        empTower: emp.tower || extraFieldValue(emp, 'tower'),
         empCity: emp.city,
         empProvince: emp.province,
         empPostalCode: emp.postal_code,
@@ -1093,8 +1262,11 @@ export async function render(container) {
         empHealthInsuranceNumber: emp.health_insurance_number,
         empUnion: emp.union,
         empUnionNumber: emp.union_number,
+        empUnionMemberNumber: emp.union_member_number || extraFieldValue(emp, 'union_member_number'),
+        empUnemploymentFundAccount: emp.unemployment_fund_account || extraFieldValue(emp, 'unemployment_fund_account'),
         empFileNumber: emp.file_number,
-        empIericNumber: emp.ieric_number || (emp.extra_fields?.['NRO IERIC']?.value || emp.extra_fields?.['NRO IERIC'] || emp.extra_fields?.['ieric_number']?.value || emp.extra_fields?.['ieric_number']),
+        empIericNumber: emp.ieric_number || extraFieldValue(emp, 'NRO IERIC') || extraFieldValue(emp, 'ieric_number'),
+        empLegajoNumber: emp.legajo_number || extraFieldValue(emp, 'legajo_number'),
         empHireDate: emp.hire_date,
         empJobTitle: emp.job_title,
         empCategory: emp.category,
@@ -1123,6 +1295,13 @@ export async function render(container) {
         empEstudiosCursados: emp.estudios_cursados || '',
         empAntecedentesLaborales: emp.antecedentes_laborales || '',
         empDatosFamiliares: emp.datos_familiares || '',
+        empCardNumber: emp.card_number || extraFieldValue(emp, 'card_number'),
+        empParaje: emp.paraje || extraFieldValue(emp, 'paraje'),
+        empRopaDesde: emp.extra_fields?.ropa_trabajo?.desde || '',
+        empRopaHasta: emp.extra_fields?.ropa_trabajo?.hasta || '',
+        empRopaVencimiento: emp.extra_fields?.ropa_trabajo?.vencimiento || '',
+        empRopaProximoVencimiento: emp.extra_fields?.ropa_trabajo?.proximo_vencimiento || '',
+        empBankBranch: emp.bank_branch || '',
       };
 
       Object.entries(fieldMap).forEach(([id, value]) => {
@@ -1135,6 +1314,13 @@ export async function render(container) {
         const sel = el('empBankCode', container);
         if (sel) sel.value = emp.bank_code;
       }
+
+      const familyMembers = Array.isArray(emp.family_members) ? emp.family_members : (emp.extra_fields?.family_members || []);
+      const familyHidden = el('empFamilyMembers', container);
+      if (familyHidden) {
+        familyHidden.value = JSON.stringify(familyMembers);
+      }
+      renderFamilyMembers(container);
 
       // Update seniority display
       el('displaySeniority', container).innerText = emp.seniority_text || '-';
@@ -1210,6 +1396,9 @@ export async function render(container) {
         phone: 'empPhone',
         address: 'empAddress',
         address_number: 'empAddressNumber',
+        floor: 'empFloor',
+        apartment: 'empApartment',
+        tower: 'empTower',
         city: 'empCity',
         province: 'empProvince',
         postal_code: 'empPostalCode',
@@ -1219,8 +1408,11 @@ export async function render(container) {
         health_insurance_number: 'empHealthInsuranceNumber',
         union: 'empUnion',
         union_number: 'empUnionNumber',
+        union_member_number: 'empUnionMemberNumber',
+        unemployment_fund_account: 'empUnemploymentFundAccount',
         file_number: 'empFileNumber',
         ieric_number: 'empIericNumber',
+        legajo_number: 'empLegajoNumber',
         hire_date: 'empHireDate',
         job_title: 'empJobTitle',
         category: 'empCategory',
@@ -1238,6 +1430,9 @@ export async function render(container) {
         revista_situation: 'empRevistaSituation',
         bank: 'empBank',
         bank_code: 'empBankCode',
+        bank_branch: 'empBankBranch',
+        card_number: 'empCardNumber',
+        paraje: 'empParaje',
         account_type: 'empAccType',
         account_number: 'empAccNumber',
         cbu: 'empCbu',
@@ -1262,10 +1457,20 @@ export async function render(container) {
         if (value) fd.append(key, value);
       });
 
+      [
+        ['ropa_desde', 'empRopaDesde'],
+        ['ropa_hasta', 'empRopaHasta'],
+        ['ropa_vencimiento', 'empRopaVencimiento'],
+        ['ropa_proximo_vencimiento', 'empRopaProximoVencimiento'],
+      ].forEach(([key, id]) => fd.append(key, el(id, container)?.value || ''));
+
+      const familyMembersValue = el('empFamilyMembers', container)?.value || '[]';
+      fd.append('family_members', familyMembersValue);
+
       // Append branch if bank selected
       const selectedBankCode = el('empBankCode', container)?.value;
       const bankData = bankMaster.find(b => b.code === selectedBankCode);
-      if (bankData && bankData.branch) {
+      if (bankData && bankData.branch && !el('empBankBranch', container)?.value.trim()) {
         fd.append('bank_branch', bankData.branch);
       }
 
@@ -2046,6 +2251,37 @@ export async function render(container) {
       } else {
         el('groupTermination', container).classList.add('hidden');
       }
+    };
+  }
+
+  const addFamilyBtn = el('btnAddFamilyMember', container);
+  if (addFamilyBtn) {
+    addFamilyBtn.onclick = () => {
+      const hidden = el('empFamilyMembers', container);
+      if (!hidden) return;
+
+      let current = [];
+      try {
+        current = JSON.parse(hidden.value || '[]');
+      } catch {
+        current = [];
+      }
+
+      current.push({
+        vinculo: '',
+        cuil: '',
+        documento: '',
+        nombre: '',
+        fecha_nacimiento: '',
+        documentacion: '',
+        t: '',
+        f: '',
+        acta: '',
+        nivel_escolar: '',
+      });
+
+      hidden.value = JSON.stringify(current);
+      renderFamilyMembers(container);
     };
   }
 

@@ -7,6 +7,7 @@ GAP-010: delete_employee / bulk_delete_employees guard against signed receipts.
 GAP-019: upsert_employee does NOT downgrade 'active' employees to 'pre_registered'.
 """
 
+import json
 import re
 from typing import Optional
 from fastapi import APIRouter, Request, Depends, HTTPException, Form
@@ -41,6 +42,7 @@ from payroll_core import (
     create_signature_request,
     resolve_storage_path,
 )
+from services.family_members import normalize_family_members_payload
 from services.legajo.ingestion import IngestionService, IngestionMode
 from services.legajo.banks import list_banks, get_bank_by_code
 from services.encryption_service import (
@@ -51,6 +53,46 @@ from services.encryption_service import (
 )
 
 router = APIRouter(prefix="/api", tags=["employees"])
+
+
+def persist_family_members(db: Session, employee_id: str, raw_value, org_id: Optional[str] = None) -> list[dict]:
+    members = normalize_family_members_payload(raw_value)
+    payload = json.dumps({"family_members": members})
+    db.execute(
+        text("""
+            UPDATE employees
+            SET extra_fields = COALESCE(extra_fields, '{}'::jsonb) || CAST(:payload AS jsonb)
+            WHERE id = :id
+              AND (:org_id IS NULL OR organization_id = CAST(:org_id AS UUID))
+        """),
+        {"payload": payload, "id": employee_id, "org_id": org_id},
+    )
+    return members
+
+
+def persist_clothing_delivery(db: Session, employee_id: str, payload, org_id: Optional[str] = None) -> None:
+    fields = {
+        "desde": "ropa_desde",
+        "hasta": "ropa_hasta",
+        "vencimiento": "ropa_vencimiento",
+        "proximo_vencimiento": "ropa_proximo_vencimiento",
+    }
+    if not any(key in payload for key in fields.values()):
+        return
+
+    values = {
+        name: sanitize_text_input(str(payload.get(key, "") or ""))
+        for name, key in fields.items()
+    }
+    db.execute(
+        text("""
+            UPDATE employees
+            SET extra_fields = COALESCE(extra_fields, '{}'::jsonb) || CAST(:payload AS jsonb)
+            WHERE id = :id
+              AND (:org_id IS NULL OR organization_id = CAST(:org_id AS UUID))
+        """),
+        {"payload": json.dumps({"ropa_trabajo": values}), "id": employee_id, "org_id": org_id},
+    )
 
 
 def _encryption_metadata_exists(db: Session, file_path: str | Path, organization_id: str) -> bool:
@@ -387,7 +429,9 @@ async def get_employee_profile(
 
     row = db.execute(
         text("""
-            SELECT e.*, ed.ieric_number
+                 SELECT e.*, ed.ieric_number, ed.floor, ed.apartment, ed.tower,
+                     ed.union_member_number, ed.unemployment_fund_account,
+                     ed.legajo_number, ed.card_number, ed.paraje
             FROM employees e
             LEFT JOIN employee_extra_data ed ON ed.employee_id = e.id
             WHERE e.id = :id AND e.organization_id = :org
@@ -399,7 +443,6 @@ async def get_employee_profile(
         raise HTTPException(404, "employee_not_found")
 
     emp_data = dict(row._mapping)
-    emp_data.pop("extra_fields", None)
     # Formatear fechas, antigüedad y enums
     for key in ['birth_date', 'hire_date', 'termination_date', 'created_at']:
         if emp_data.get(key):
@@ -451,9 +494,14 @@ async def upsert_employee(
             "errors": [iss.to_dict() for iss in result.issues if iss.level == "error"],
             "warnings": [iss.to_dict() for iss in result.issues if iss.level == "warning"]
         }
-    
+
+    if result.employee_id and "family_members" in raw_payload:
+        persist_family_members(db, result.employee_id, raw_payload.get("family_members"), org_id)
+    if result.employee_id:
+        persist_clothing_delivery(db, result.employee_id, raw_payload, org_id)
+
     return {
-        "status": "ok", 
+        "status": "ok",
         "employee_id": result.employee_id,
         "match": result.match_info
     }
@@ -710,6 +758,26 @@ async def update_employee(
                 "payment_method", "payment_place", "status", "status_reason", "is_active"
             ]
 
+            family_members_raw = payload.get("family_members")
+            has_family_update = family_members_raw is not None
+            if has_family_update:
+                persist_family_members(db, employee_id, family_members_raw, org_id)
+
+            has_clothing_update = any(key in payload for key in (
+                "ropa_desde", "ropa_hasta", "ropa_vencimiento", "ropa_proximo_vencimiento"
+            ))
+
+            extra_table_fields = {
+                "floor": "floor",
+                "apartment": "apartment",
+                "tower": "tower",
+                "union_member_number": "union_member_number",
+                "unemployment_fund_account": "unemployment_fund_account",
+                "legajo_number": "legajo_number",
+                "card_number": "card_number",
+                "paraje": "paraje",
+            }
+
             # Mapeos de retrocompatibilidad para PATCH
             legacy_map = {
                 "position": "job_title",
@@ -752,7 +820,14 @@ async def update_employee(
                         update_fields.append(f'"{field}" = :{field}')
                         params[field] = val
 
-            if not update_fields and not extra_data_updates:
+            for field, column in extra_table_fields.items():
+                if field in payload:
+                    val = payload[field]
+                    if isinstance(val, str):
+                        val = sanitize_text_input(val)
+                    extra_data_updates[column] = val
+
+            if not update_fields and not extra_data_updates and not has_family_update and not has_clothing_update:
                 return {"status": "ok", "message": "no_fields_to_update"}
 
             # GAP-009: Bloquear cambio de DNI si hay recibos firmados
@@ -772,15 +847,32 @@ async def update_employee(
                 ).fetchone()
 
                 if existing_extra:
+                    set_clauses = ["ieric_number = :ieric_number"]
+                    params_extra = {"ieric_number": extra_data_updates.get("ieric_number"), "id": employee_id}
+                    for col_name, value in extra_data_updates.items():
+                        if col_name == "ieric_number":
+                            continue
+                        set_clauses.append(f"{col_name} = :{col_name}")
+                        params_extra[col_name] = value
                     db.execute(
-                        text("UPDATE employee_extra_data SET ieric_number = :ieric_number WHERE employee_id = :id"),
-                        {"ieric_number": extra_data_updates.get("ieric_number"), "id": employee_id}
+                        text(f"UPDATE employee_extra_data SET {', '.join(set_clauses)} WHERE employee_id = :id"),
+                        params_extra,
                     )
                 else:
+                    insert_cols = ["employee_id"]
+                    insert_values = [":id"]
+                    insert_params = {"id": employee_id}
+                    for col_name, value in extra_data_updates.items():
+                        insert_cols.append(col_name)
+                        insert_values.append(f":{col_name}")
+                        insert_params[col_name] = value
                     db.execute(
-                        text("INSERT INTO employee_extra_data (employee_id, ieric_number) VALUES (:id, :ieric_number)"),
-                        {"id": employee_id, "ieric_number": extra_data_updates.get("ieric_number")}
+                        text(f"INSERT INTO employee_extra_data ({', '.join(insert_cols)}) VALUES ({', '.join(insert_values)})"),
+                        insert_params,
                     )
+
+            if has_clothing_update:
+                persist_clothing_delivery(db, employee_id, payload, org_id)
 
             # If status became 'inactive', detach the user account to leave it "free" for other companies
             if payload.get("status") == "inactive":
