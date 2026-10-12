@@ -1,11 +1,11 @@
 /**
  * Router con separación de roles y protección de rutas.
  */
-import { getMe, logoutSession } from './common.js?v=117';
-import { tosAcceptance } from './tos-acceptance.js?v=117';
-import { ROUTES } from './constants.js?v=117';
+import { getMe, logoutSession } from './common.js?v=118';
+import { tosAcceptance } from './tos-acceptance.js?v=118';
+import { ROUTES } from './constants.js?v=118';
 
-const VERSION = '117'; // Force refresh for independent family tab in employee legajo
+const VERSION = '118'; // Refresh the updated employee legajo editor
 
 const loadPage = (page) => import(`./pages/${page}.js?v=${VERSION}`);
 

@@ -10,7 +10,7 @@ GAP-019: upsert_employee does NOT downgrade 'active' employees to 'pre_registere
 import json
 import re
 from typing import Optional
-from fastapi import APIRouter, Request, Depends, HTTPException, Form
+from fastapi import APIRouter, Request, Depends, HTTPException, Form, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
@@ -92,6 +92,38 @@ def persist_clothing_delivery(db: Session, employee_id: str, payload, org_id: Op
               AND (:org_id IS NULL OR organization_id = CAST(:org_id AS UUID))
         """),
         {"payload": json.dumps({"ropa_trabajo": values}), "id": employee_id, "org_id": org_id},
+    )
+
+
+def persist_template_fields(db: Session, employee_id: str, raw_value, org_id: Optional[str] = None) -> None:
+    if not raw_value:
+        return
+    try:
+        values = json.loads(raw_value) if isinstance(raw_value, str) else raw_value
+    except (TypeError, ValueError):
+        raise HTTPException(400, "datos_nuevo_legajo_invalidos")
+    if not isinstance(values, dict):
+        raise HTTPException(400, "datos_nuevo_legajo_invalidos")
+
+    allowed = {
+        "document_expediente", "health_insurance_code", "retirement_plan", "afjp",
+        "section_address", "section_locality", "ieric_delivery_status", "booklet_number",
+        "booklet_rubric_date", "union_voluntary", "family_residence", "studies_completed",
+        "work_history", "family_data", "shirt_size", "pants_size", "shoe_size",
+    }
+    clean_values = {
+        key: sanitize_text_input(str(value or ""))
+        for key, value in values.items()
+        if key in allowed
+    }
+    db.execute(
+        text("""
+            UPDATE employees
+            SET extra_fields = COALESCE(extra_fields, '{}'::jsonb) || CAST(:payload AS jsonb)
+            WHERE id = :id
+              AND (:org_id IS NULL OR organization_id = CAST(:org_id AS UUID))
+        """),
+        {"payload": json.dumps({"nuevo_legajo": clean_values}), "id": employee_id, "org_id": org_id},
     )
 
 
@@ -499,6 +531,7 @@ async def upsert_employee(
         persist_family_members(db, result.employee_id, raw_payload.get("family_members"), org_id)
     if result.employee_id:
         persist_clothing_delivery(db, result.employee_id, raw_payload, org_id)
+        persist_template_fields(db, result.employee_id, raw_payload.get("nuevo_legajo"), org_id)
 
     return {
         "status": "ok",
@@ -766,6 +799,7 @@ async def update_employee(
             has_clothing_update = any(key in payload for key in (
                 "ropa_desde", "ropa_hasta", "ropa_vencimiento", "ropa_proximo_vencimiento"
             ))
+            has_template_update = "nuevo_legajo" in payload
 
             extra_table_fields = {
                 "floor": "floor",
@@ -827,7 +861,7 @@ async def update_employee(
                         val = sanitize_text_input(val)
                     extra_data_updates[column] = val
 
-            if not update_fields and not extra_data_updates and not has_family_update and not has_clothing_update:
+            if not update_fields and not extra_data_updates and not has_family_update and not has_clothing_update and not has_template_update:
                 return {"status": "ok", "message": "no_fields_to_update"}
 
             # GAP-009: Bloquear cambio de DNI si hay recibos firmados
@@ -873,6 +907,8 @@ async def update_employee(
 
             if has_clothing_update:
                 persist_clothing_delivery(db, employee_id, payload, org_id)
+            if has_template_update:
+                persist_template_fields(db, employee_id, payload.get("nuevo_legajo"), org_id)
 
             # If status became 'inactive', detach the user account to leave it "free" for other companies
             if payload.get("status") == "inactive":
@@ -1476,6 +1512,7 @@ async def get_my_signature(
 @router.get("/employees/{emp_id}/record-pdf")
 async def get_employee_record_pdf(
     emp_id: str,
+    include_termination_notice: bool = Query(default=False),
     user=Depends(require_auth),
     db: Session = Depends(get_db)
 ):
@@ -1487,6 +1524,8 @@ async def get_employee_record_pdf(
     # Verify access: Needs to be admin, or the employee themselves
     if user["role"] != "admin" and user.get("employee_id") != emp_id:
         raise HTTPException(403, "acceso_denegado")
+    if include_termination_notice and user["role"] != "admin":
+        raise HTTPException(403, "solo_admin_puede_generar_notificacion_de_baja")
 
     from services.employee_pdf_service import EmployeePDFService
     import io
@@ -1496,17 +1535,17 @@ async def get_employee_record_pdf(
     
     try:
         pdf_service = EmployeePDFService(db)
-        pdf_bytes = pdf_service.generate_record_pdf(emp_id, org_id)
+        pdf_bytes = pdf_service.generate_record_pdf(emp_id, org_id, include_termination_notice=include_termination_notice)
         employee = db.execute(text("""
             SELECT first_name, last_name FROM employees
             WHERE id = :id AND organization_id = :org
         """), {"id": emp_id, "org": org_id}).fetchone()
         employee_name = " ".join(part for part in (employee.first_name, employee.last_name) if part).strip() if employee else "Empleado"
-        document_title = f"LEGAJO - {employee_name or 'Empleado'}"
+        document_title = f"NOTIFICACIÓN DE BAJA - {employee_name or 'Empleado'}" if include_termination_notice else f"LEGAJO - {employee_name or 'Empleado'}"
         safe_filename = re.sub(r"[^A-Za-z0-9._ -]", "", document_title).strip() or "LEGAJO DE PERSONAL"
         
         # Audit log
-        audit(db, org_id, user["role"], user["id"], "EMPLOYEE_RECORD_DOWNLOADED", emp_id, {"format": "pdf"})
+        audit(db, org_id, user["role"], user["id"], "EMPLOYEE_RECORD_DOWNLOADED", emp_id, {"format": "pdf", "termination_notice": include_termination_notice})
         
         return StreamingResponse(
             io.BytesIO(pdf_bytes), 
