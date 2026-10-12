@@ -290,13 +290,20 @@ export async function render(container) {
                     <option value="DNI">DNI</option>
                     <option value="LC">LC</option>
                     <option value="LE">LE</option>
+                    <option value="CI">CI</option>
                     <option value="PASAPORTE">Pasaporte</option>
+                    <option value="cert_migratorio">Cert. Migratorio</option>
                   </select>
                 </div>
 
                 <div class="form-group">
                   <label for="empDocNumber">Nro documento / expediente</label>
                   <input class="input" id="empDocNumber" placeholder="Si es distinto al DNI o si corresponde expediente" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empDocumentExpediente">N° de expediente</label>
+                  <input class="input" id="empDocumentExpediente" />
                 </div>
 
                 <div class="form-group">
@@ -401,6 +408,11 @@ export async function render(container) {
                 </div>
 
                 <div class="form-group">
+                  <label for="empHealthInsuranceCode">Código obra social</label>
+                  <input class="input" id="empHealthInsuranceCode" />
+                </div>
+
+                <div class="form-group">
                   <label for="empUnion">Sindicato</label>
                   <input class="input" id="empUnion" placeholder="SEC" />
                 </div>
@@ -419,6 +431,25 @@ export async function render(container) {
                   <label for="empUnemploymentFundAccount">Cuenta fondo de desempleo</label>
                   <input class="input" id="empUnemploymentFundAccount" placeholder="Cuenta / N° fondo desempleo" />
                 </div>
+
+                <div class="form-group">
+                  <label for="empBookletNumber">N° libreta fondo de desempleo</label>
+                  <input class="input" id="empBookletNumber" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empBookletRubricDate">Fecha de rúbrica de libreta</label>
+                  <input class="input" id="empBookletRubricDate" type="date" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empUnionVoluntary">Aporte sindical voluntario</label>
+                  <select class="input" id="empUnionVoluntary">
+                    <option value="">Sin declarar</option>
+                    <option value="si">SI</option>
+                    <option value="no">NO</option>
+                  </select>
+                </div>
               </div>
             </div>
             
@@ -428,6 +459,20 @@ export async function render(container) {
                 <div class="form-group">
                   <label for="empPensionRegime">Régimen previsional</label>
                   <input class="input" id="empPensionRegime" placeholder="SIPA" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empRetirementPlan">Plan previsional</label>
+                  <select class="input" id="empRetirementPlan">
+                    <option value="">Sin especificar</option>
+                    <option value="reparto">Reparto</option>
+                    <option value="capitalizacion">Capitalización</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="empAfjp">AFJP</label>
+                  <input class="input" id="empAfjp" />
                 </div>
 
                 <div class="form-group">
@@ -513,6 +558,26 @@ export async function render(container) {
                 <div class="form-group">
                   <label for="empWorkLocation">Lugar de trabajo</label>
                   <input class="input" id="empWorkLocation" placeholder="Sucursal 1 / Remoto" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empSectionAddress">Domicilio de sección</label>
+                  <input class="input" id="empSectionAddress" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empSectionLocality">Localidad de sección</label>
+                  <input class="input" id="empSectionLocality" />
+                </div>
+
+                <div class="form-group">
+                  <label for="empIericDeliveryStatus">Estado tarjeta IERIC</label>
+                  <select class="input" id="empIericDeliveryStatus">
+                    <option value="">Sin especificar</option>
+                    <option value="a_tramitar">A tramitar</option>
+                    <option value="a_entregar">A entregar</option>
+                    <option value="entregada">Entregada</option>
+                  </select>
                 </div>
 
                 <div class="form-group">
@@ -611,6 +676,10 @@ export async function render(container) {
                   <div id="familyMembersCounter" class="small-muted mb-12">Cantidad: 0</div>
                   <div id="familyMembersList" class="flex-col gap-12"></div>
                 </div>
+                <div class="form-group empresa-form-full">
+                  <label for="empFamilyResidence">Residencia de las cargas familiares</label>
+                  <input class="input" id="empFamilyResidence" />
+                </div>
               </div>
             </div>
 
@@ -689,6 +758,7 @@ export async function render(container) {
 
             <div class="flex items-center gap-8">
               <button id="empPrintRecord" class="btn btn-primary btn-sm empresa-employee-action">Imprimir legajo</button>
+              <button id="empPrintTermination" class="btn btn-ghost btn-sm empresa-employee-action hidden">Notificación de baja</button>
               <button id="empProfileEdit" class="btn btn-ghost btn-sm empresa-employee-action">Modificar</button>
             </div>
           </div>
@@ -1236,6 +1306,7 @@ export async function render(container) {
       const res = await apiFetch(`/api/employees/${employeeId}`);
       const emp = res.employee || res;
       msg.textContent = '';
+      const legajoData = emp.extra_fields?.nuevo_legajo || {};
 
       const fieldMap = {
         empFirstName: emp.first_name,
@@ -1258,12 +1329,17 @@ export async function render(container) {
         empPostalCode: emp.postal_code,
         empDocType: emp.document_type || 'DNI',
         empDocNumber: emp.document_number,
+        empDocumentExpediente: legajoData.document_expediente,
         empHealthInsurance: emp.health_insurance,
         empHealthInsuranceNumber: emp.health_insurance_number,
+        empHealthInsuranceCode: legajoData.health_insurance_code,
         empUnion: emp.union,
         empUnionNumber: emp.union_number,
         empUnionMemberNumber: emp.union_member_number || extraFieldValue(emp, 'union_member_number'),
         empUnemploymentFundAccount: emp.unemployment_fund_account || extraFieldValue(emp, 'unemployment_fund_account'),
+          empBookletNumber: legajoData.booklet_number,
+          empBookletRubricDate: legajoData.booklet_rubric_date,
+          empUnionVoluntary: legajoData.union_voluntary,
         empFileNumber: emp.file_number,
         empIericNumber: emp.ieric_number || extraFieldValue(emp, 'NRO IERIC') || extraFieldValue(emp, 'ieric_number'),
         empLegajoNumber: emp.legajo_number || extraFieldValue(emp, 'legajo_number'),
@@ -1279,6 +1355,11 @@ export async function render(container) {
         empTerminationDate: emp.termination_date,
         empStatusReason: emp.status_reason,
         empPensionRegime: emp.pension_regime,
+          empRetirementPlan: legajoData.retirement_plan,
+          empAfjp: legajoData.afjp,
+          empSectionAddress: legajoData.section_address,
+          empSectionLocality: legajoData.section_locality,
+          empIericDeliveryStatus: legajoData.ieric_delivery_status,
         empActivity: emp.activity,
         empLaborCondition: emp.labor_condition,
         empRevistaSituation: emp.revista_situation,
@@ -1289,12 +1370,13 @@ export async function render(container) {
         empAlias: emp.bank_alias,
         empPaymentMethod: emp.payment_method,
         empPaymentPlace: emp.payment_place,
-        empTalleCamisa: emp.talle_camisa || '',
-        empTallePantalon: emp.talle_pantalon || '',
-        empTalleZapato: emp.talle_zapato || '',
-        empEstudiosCursados: emp.estudios_cursados || '',
-        empAntecedentesLaborales: emp.antecedentes_laborales || '',
-        empDatosFamiliares: emp.datos_familiares || '',
+        empTalleCamisa: legajoData.shirt_size,
+        empTallePantalon: legajoData.pants_size,
+        empTalleZapato: legajoData.shoe_size,
+        empEstudiosCursados: legajoData.studies_completed || extraFieldValue(emp, 'estudios_cursados'),
+        empAntecedentesLaborales: legajoData.work_history,
+        empDatosFamiliares: legajoData.family_data,
+        empFamilyResidence: legajoData.family_residence,
         empCardNumber: emp.card_number || extraFieldValue(emp, 'card_number'),
         empParaje: emp.paraje || extraFieldValue(emp, 'paraje'),
         empRopaDesde: emp.extra_fields?.ropa_trabajo?.desde || '',
@@ -1464,6 +1546,30 @@ export async function render(container) {
         ['ropa_proximo_vencimiento', 'empRopaProximoVencimiento'],
       ].forEach(([key, id]) => fd.append(key, el(id, container)?.value || ''));
 
+      const legajoFields = {
+        document_expediente: 'empDocumentExpediente',
+        health_insurance_code: 'empHealthInsuranceCode',
+        retirement_plan: 'empRetirementPlan',
+        afjp: 'empAfjp',
+        section_address: 'empSectionAddress',
+        section_locality: 'empSectionLocality',
+        ieric_delivery_status: 'empIericDeliveryStatus',
+        booklet_number: 'empBookletNumber',
+        booklet_rubric_date: 'empBookletRubricDate',
+        union_voluntary: 'empUnionVoluntary',
+        family_residence: 'empFamilyResidence',
+        studies_completed: 'empEstudiosCursados',
+        work_history: 'empAntecedentesLaborales',
+        family_data: 'empDatosFamiliares',
+        shirt_size: 'empTalleCamisa',
+        pants_size: 'empTallePantalon',
+        shoe_size: 'empTalleZapato',
+      };
+      const legajoData = Object.fromEntries(
+        Object.entries(legajoFields).map(([key, id]) => [key, el(id, container)?.value?.trim() || ''])
+      );
+      fd.append('nuevo_legajo', JSON.stringify(legajoData));
+
       const familyMembersValue = el('empFamilyMembers', container)?.value || '[]';
       fd.append('family_members', familyMembersValue);
 
@@ -1571,6 +1677,11 @@ export async function render(container) {
       const emp = res.employee || res;
 
       el('empProfileTitle', container).innerText = `${emp.last_name}, ${emp.first_name}`;
+      const terminationButton = el('empPrintTermination', container);
+      terminationButton.classList.toggle('hidden', !emp.termination_date);
+      terminationButton.onclick = () => {
+        window.open(apiUrl(`/api/employees/${employeeId}/record-pdf?include_termination_notice=true`), '_blank');
+      };
 
       const statusBadge = el('empProfileStatusBadge', container);
       statusBadge.innerHTML = '';

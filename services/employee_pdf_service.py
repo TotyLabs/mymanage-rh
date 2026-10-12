@@ -414,9 +414,16 @@ class EmployeePDFService:
         ]
         return self._build_form_page('DECLARACIÓN DE AFILIACIÓN SINDICAL', body, right_date=today)
 
-    def generate_record_pdf(self, employee_id: str, organization_id: str) -> bytes:
+    def _generate_legacy_record_pdf(self, employee_id: str, organization_id: str) -> bytes:
         emp = self.db.execute(
-            text("SELECT * FROM employees WHERE id = :id AND organization_id = :org"),
+            text("""
+                  SELECT e.*, ed.floor, ed.apartment, ed.tower, ed.paraje,
+                       ed.union_member_number, ed.unemployment_fund_account,
+                      ed.legajo_number, ed.card_number
+                FROM employees e
+                LEFT JOIN employee_extra_data ed ON ed.employee_id = e.id
+                WHERE e.id = :id AND e.organization_id = :org
+            """),
             {"id": employee_id, "org": organization_id}
         ).fetchone()
 
@@ -568,3 +575,26 @@ class EmployeePDFService:
 
         doc.build(elements, onFirstPage=set_pdf_metadata)
         return buffer.getvalue()
+
+    def generate_record_pdf(self, employee_id: str, organization_id: str, include_termination_notice: bool = False) -> bytes:
+        emp = self.db.execute(
+            text("""
+                SELECT e.*, ed.floor, ed.apartment, ed.tower, ed.paraje,
+                       ed.union_member_number, ed.unemployment_fund_account,
+                       ed.legajo_number, ed.card_number
+                FROM employees e
+                LEFT JOIN employee_extra_data ed ON ed.employee_id = e.id
+                WHERE e.id = :id AND e.organization_id = :org
+            """),
+            {"id": employee_id, "org": organization_id}
+        ).fetchone()
+        if not emp:
+            raise ValueError("employee_not_found")
+
+        org = self.db.execute(
+            text("SELECT name, logo_path FROM organizations WHERE id = :id"),
+            {"id": organization_id}
+        ).fetchone()
+
+        from services.employee_legajo_template import EmployeeLegajoTemplate
+        return EmployeeLegajoTemplate(emp, org, include_termination_notice).generate()
