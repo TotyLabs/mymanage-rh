@@ -346,9 +346,15 @@ class ImportService:
                         else: updated_count += 1 # reactivate and update both count here
                         row.resolution_status = "executed"
                         row.matched_employee_id = res.employee_id
+                        row.validation_warnings_json = [
+                            iss.message for iss in res.issues if iss.level == "warning"
+                        ]
                     else:
                         row.resolution_status = "invalid"
                         row.validation_errors_json = [iss.message for iss in res.issues if iss.level == "error"]
+                        row.validation_warnings_json = [
+                            iss.message for iss in res.issues if iss.level == "warning"
+                        ]
                         invalid_count += 1
                 except Exception as e:
                     row.resolution_status = "invalid"

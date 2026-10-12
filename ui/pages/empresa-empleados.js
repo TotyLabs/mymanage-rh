@@ -44,6 +44,18 @@ function extraFieldValue(emp, key) {
   return value && typeof value === 'object' && 'value' in value ? value.value : (value || '');
 }
 
+function setSelectValuePreservingLegacy(select, rawValue) {
+  if (!select) return;
+  const value = rawValue || '';
+  if (value && !Array.from(select.options).some((option) => option.value === value)) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = `${value} (valor histórico)`;
+    select.appendChild(option);
+  }
+  select.value = value;
+}
+
 function openUiModal(id, container) {
   const modal = el(id, container);
   if (!modal) return;
@@ -467,6 +479,9 @@ export async function render(container) {
                     <option value="">Sin especificar</option>
                     <option value="reparto">Reparto</option>
                     <option value="capitalizacion">Capitalización</option>
+                    <optgroup label="Valores históricos">
+                      <option value="afjp">AFJP (histórico)</option>
+                    </optgroup>
                   </select>
                 </div>
 
@@ -533,11 +548,6 @@ export async function render(container) {
                 <div class="form-group">
                   <label for="empCostCenter">Centro de costo</label>
                   <input class="input" id="empCostCenter" />
-                </div>
-
-                <div class="form-group">
-                  <label for="empLegajoNumber">Leg Nº</label>
-                  <input class="input" id="empLegajoNumber" placeholder="Número de legajo interno" />
                 </div>
 
                 <div class="form-group">
@@ -773,6 +783,29 @@ export async function render(container) {
         </div>
       </div>
 
+      <div id="recordPdfOptionsModal" class="modal hidden" aria-hidden="true">
+        <div class="modal-content empresa-modal-sm" role="dialog" aria-modal="true" aria-labelledby="recordPdfOptionsTitle">
+          <div class="modal-header">
+            <h3 class="modal-title" id="recordPdfOptionsTitle">Generar legajo</h3>
+          </div>
+          <div class="modal-body">
+            <p class="small-muted mb-16">Las hojas generales se incluyen siempre. Elegí la documentación adicional para esta generación.</p>
+            <label class="flex items-center gap-8 mb-12">
+              <input type="checkbox" id="recordPdfIncludeClothing" />
+              <span>Incluir constancia de entrega de ropa de trabajo</span>
+            </label>
+            <label class="flex items-center gap-8">
+              <input type="checkbox" id="recordPdfIncludeBooklet" />
+              <span>Incluir constancia de entrega de libreta de fondo de desempleo</span>
+            </label>
+          </div>
+          <div class="modal-footer">
+            <button id="recordPdfOptionsCancel" class="btn btn-ghost" type="button">Cancelar</button>
+            <button id="recordPdfOptionsGenerate" class="btn btn-primary" type="button">Generar legajo</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Modal upload DNI -->
       <div id="dniUploadModal" class="modal hidden" aria-hidden="true">
         <div class="modal-content empresa-modal-sm">
@@ -987,6 +1020,40 @@ export async function render(container) {
   let sortField = 'last_name';
   let sortOrder = 'asc';
   let searchText = '';
+  let pendingRecordPdf = null;
+
+  function openRecordPdfOptions(employeeId, download, includeTerminationNotice = false) {
+    pendingRecordPdf = { employeeId, download, includeTerminationNotice };
+    el('recordPdfIncludeClothing', container).checked = false;
+    el('recordPdfIncludeBooklet', container).checked = false;
+    el('recordPdfOptionsTitle', container).textContent = includeTerminationNotice
+      ? 'Generar legajo y notificación de baja'
+      : 'Generar legajo';
+    openUiModal('recordPdfOptionsModal', container);
+  }
+
+  function generateRecordPdfFromOptions() {
+    if (!pendingRecordPdf) return;
+    const params = new URLSearchParams();
+    if (el('recordPdfIncludeClothing', container).checked) params.append('include_pages', 'clothing');
+    if (el('recordPdfIncludeBooklet', container).checked) params.append('include_pages', 'unemployment_booklet');
+    if (pendingRecordPdf.includeTerminationNotice) params.set('include_termination_notice', 'true');
+
+    const query = params.toString();
+    const url = apiUrl(`/api/employees/${pendingRecordPdf.employeeId}/record-pdf${query ? `?${query}` : ''}`);
+    if (pendingRecordPdf.download) {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `legajo_${pendingRecordPdf.employeeId.substring(0, 8)}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } else {
+      window.open(url, '_blank', 'noopener');
+    }
+    pendingRecordPdf = null;
+    closeUiModal('recordPdfOptionsModal', container);
+  }
 
   async function loadBanks() {
     try {
@@ -1216,13 +1283,7 @@ export async function render(container) {
       tdActions.appendChild(actionBox);
 
       btnDownload.onclick = () => {
-        const url = apiUrl(`/api/employees/${emp.id}/record-pdf`);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `legajo_${emp.id.substring(0,8)}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        openRecordPdfOptions(emp.id, true);
       };
 
       tr.append(tdCheck, tdName, tdFile, tdDni, tdCuil, tdStatus, tdReceipts, tdActions);
@@ -1337,12 +1398,11 @@ export async function render(container) {
         empUnionNumber: emp.union_number,
         empUnionMemberNumber: emp.union_member_number || extraFieldValue(emp, 'union_member_number'),
         empUnemploymentFundAccount: emp.unemployment_fund_account || extraFieldValue(emp, 'unemployment_fund_account'),
-          empBookletNumber: legajoData.booklet_number,
-          empBookletRubricDate: legajoData.booklet_rubric_date,
-          empUnionVoluntary: legajoData.union_voluntary,
+        empBookletNumber: legajoData.booklet_number,
+        empBookletRubricDate: legajoData.booklet_rubric_date,
+        empUnionVoluntary: legajoData.union_voluntary,
         empFileNumber: emp.file_number,
         empIericNumber: emp.ieric_number || extraFieldValue(emp, 'NRO IERIC') || extraFieldValue(emp, 'ieric_number'),
-        empLegajoNumber: emp.legajo_number || extraFieldValue(emp, 'legajo_number'),
         empHireDate: emp.hire_date,
         empJobTitle: emp.job_title,
         empCategory: emp.category,
@@ -1355,11 +1415,11 @@ export async function render(container) {
         empTerminationDate: emp.termination_date,
         empStatusReason: emp.status_reason,
         empPensionRegime: emp.pension_regime,
-          empRetirementPlan: legajoData.retirement_plan,
-          empAfjp: legajoData.afjp,
-          empSectionAddress: legajoData.section_address,
-          empSectionLocality: legajoData.section_locality,
-          empIericDeliveryStatus: legajoData.ieric_delivery_status,
+        empRetirementPlan: legajoData.retirement_plan,
+        empAfjp: legajoData.afjp,
+        empSectionAddress: legajoData.section_address,
+        empSectionLocality: legajoData.section_locality,
+        empIericDeliveryStatus: legajoData.ieric_delivery_status,
         empActivity: emp.activity,
         empLaborCondition: emp.labor_condition,
         empRevistaSituation: emp.revista_situation,
@@ -1390,6 +1450,9 @@ export async function render(container) {
         const field = el(id, container);
         if (field) field.value = value || '';
       });
+      setSelectValuePreservingLegacy(el('empDocType', container), fieldMap.empDocType);
+      setSelectValuePreservingLegacy(el('empRetirementPlan', container), legajoData.retirement_plan);
+      setSelectValuePreservingLegacy(el('empIericDeliveryStatus', container), legajoData.ieric_delivery_status);
 
       // Special case for Bank select
       if (emp.bank_code) {
@@ -1494,7 +1557,6 @@ export async function render(container) {
         unemployment_fund_account: 'empUnemploymentFundAccount',
         file_number: 'empFileNumber',
         ieric_number: 'empIericNumber',
-        legajo_number: 'empLegajoNumber',
         hire_date: 'empHireDate',
         job_title: 'empJobTitle',
         category: 'empCategory',
@@ -1664,7 +1726,7 @@ export async function render(container) {
     openUiModal('empProfileModal', container);
 
     el('empPrintRecord', container).onclick = () => {
-      window.open(apiUrl(`/api/employees/${employeeId}/record-pdf`), '_blank');
+      openRecordPdfOptions(employeeId, false);
     };
 
     el('empProfileEdit', container).onclick = () => {
@@ -1680,7 +1742,7 @@ export async function render(container) {
       const terminationButton = el('empPrintTermination', container);
       terminationButton.classList.toggle('hidden', !emp.termination_date);
       terminationButton.onclick = () => {
-        window.open(apiUrl(`/api/employees/${employeeId}/record-pdf?include_termination_notice=true`), '_blank');
+        openRecordPdfOptions(employeeId, false, true);
       };
 
       const statusBadge = el('empProfileStatusBadge', container);
@@ -1792,13 +1854,7 @@ export async function render(container) {
       );
 
       el('empPrintRecord', container).onclick = () => {
-        const url = apiUrl(`/api/employees/${employeeId}/record-pdf`);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `legajo_${employeeId.substring(0,8)}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        openRecordPdfOptions(employeeId, true);
       };
 
     } catch {
@@ -1928,6 +1984,7 @@ export async function render(container) {
         const reason = (row.resolution_status === 'invalid' && row.validation_errors_json?.length)
           ? `: ${row.validation_errors_json[0]}`
           : '';
+        const warning = row.validation_warnings_json?.[0];
 
         const firstName = row.normalized_data_json?.identity?.first_name || '';
         const lastName = row.normalized_data_json?.identity?.last_name || '';
@@ -1956,6 +2013,12 @@ export async function render(container) {
         `;
 
         const ck = tr.querySelector('.row-select');
+        if (warning) {
+          const warningNote = document.createElement('small');
+          warningNote.className = 'small-muted';
+          warningNote.textContent = warning;
+          tr.querySelector('.badge').after(warningNote);
+        }
         ck.onchange = (e) => {
           if (e.target.checked) selectedIndices.add(absoluteIndex);
           else selectedIndices.delete(absoluteIndex);
@@ -2313,6 +2376,11 @@ export async function render(container) {
     location.hash = '#/empresa/dashboard';
   };
   el('empProfileClose', container).onclick = () => closeUiModal('empProfileModal', container);
+  el('recordPdfOptionsCancel', container).onclick = () => {
+    pendingRecordPdf = null;
+    closeUiModal('recordPdfOptionsModal', container);
+  };
+  el('recordPdfOptionsGenerate', container).onclick = generateRecordPdfFromOptions;
 
   el('selectAllEmployees', container).onchange = (e) => {
     employees.forEach((emp) => {
