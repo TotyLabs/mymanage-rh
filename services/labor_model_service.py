@@ -292,6 +292,31 @@ MODEL_CATALOG = {
             _field("suspension.fecha_fin", "Fin de Suspensión", "[Fecha Fin Suspensión]", input_type="date"),
         ],
     },
+    "ERT-013": {
+        "code": "ERT-013", "category": "Construccion", "model_label": "Constancia de entrega",
+        "title": "Constancia de Entrega de Ropa de Trabajo para la Industria de la Construcción",
+        "description": "Constancia de entrega de ropa de trabajo y elementos de protección personal conforme al CCT 76/75.",
+        "version": "1.0",
+        "template_path": "Modelos Laborales/Plantilla Entrega Ropa Trabajo ERT-013 MyManageRH.pdf",
+        "fields": [
+            _field("empresa.localidad_emision", "Lugar de Emisión", "[Lugar de Emisión]", "organization.city"),
+            _field("documento.dia_emision", "Día de Emisión", "[Día]", "system.day"),
+            _field("documento.mes_emision", "Mes de Emisión", "[Mes]", "system.month_name"),
+            _field("documento.anio_emision", "Año de Emisión", "[Año]", "system.year"),
+            _field("empresa.razon_social", "Razón Social", "[Empresa]", "organization.name"),
+            _field("obra.denominacion", "Obra", "[Nombre / Denominación de la Obra]"),
+            _field("empleado.apellido_y_nombre", "Trabajador", "[Nombre y Apellido del Trabajador]", "employee.full_name"),
+            _field("empleado.dni_cuil", "DNI / CUIL", "[Número de DNI / CUIL]", "employee.cuil_or_dni"),
+            _field("ropa.fecha_inicio_periodo", "Inicio del Período", "[Fecha Inicio Período]", input_type="date"),
+            _field("ropa.fecha_fin_periodo", "Fin del Período", "[Fecha Fin Período]", input_type="date"),
+            _field("ropa.fecha_vencimiento_entrega", "Vencimiento de la Entrega", "[Fecha Vencimiento Entrega]", input_type="date"),
+            _field("ropa.fecha_proximo_vencimiento", "Próximo Vencimiento", "[Fecha Próximo Vencimiento]", input_type="date"),
+            _field("firma.trabajador", "Firma del Trabajador (opcional)", "[Firma del Trabajador]", required=False),
+            _field("firma.aclaracion", "Aclaración (opcional)", "[Aclaración]", required=False),
+            _field("firma.aclaracion_nombre", "Aclaración de Firma (opcional)", "[ACLARACIÓN DE FIRMA]", required=False),
+            _field("firma.empleador", "Firma / Sello de la Empresa (opcional)", "[Firma / Sello Empresa]", required=False),
+        ],
+    },
 }
 
 

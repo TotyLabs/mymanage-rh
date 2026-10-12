@@ -1,6 +1,8 @@
 import base64
 import io
 import json
+import re
+import unicodedata
 from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -33,7 +35,12 @@ def _template_backgrounds() -> dict[int, bytes]:
 
 
 class EmployeeLegajoTemplate:
-    def __init__(self, employee, organization, include_termination_notice=False):
+    OPTIONAL_PAGES = {
+        "clothing": "_clothing_page",
+        "unemployment_booklet": "_unemployment_booklet_page",
+    }
+
+    def __init__(self, employee, organization, include_termination_notice=False, include_pages=None):
         self.employee = employee
         self.organization = organization
         self.extra = self._mapping(getattr(employee, "extra_fields", {}))
@@ -42,6 +49,12 @@ class EmployeeLegajoTemplate:
         self.family = self._family_members()
         self.today = date.today()
         self.include_termination_notice = include_termination_notice
+        self.include_pages = tuple(include_pages or ())
+        if len(self.include_pages) != len(set(self.include_pages)):
+            raise ValueError("duplicate_optional_legajo_page")
+        unknown_pages = set(self.include_pages) - self.OPTIONAL_PAGES.keys()
+        if unknown_pages:
+            raise ValueError("invalid_optional_legajo_page")
 
     @staticmethod
     def _mapping(value):
@@ -89,6 +102,28 @@ class EmployeeLegajoTemplate:
         value = self._value("marital_status")
         return labels.get(value.lower(), value)
 
+    @staticmethod
+    def _choice_key(value):
+        normalized = unicodedata.normalize("NFKD", str(value or ""))
+        normalized = normalized.encode("ascii", "ignore").decode("ascii").upper()
+        return re.sub(r"[^A-Z0-9]+", "_", normalized).strip("_").lower()
+
+    @classmethod
+    def _document_type_key(cls, value):
+        key = cls._choice_key(value).upper()
+        aliases = {
+            "DOCUMENTO_NACIONAL_DE_IDENTIDAD": "DNI",
+            "CEDULA_DE_IDENTIDAD": "CI",
+            "CEDULA_IDENTIDAD": "CI",
+            "LIBRETA_CIVICA": "LC",
+            "LIBRETA_DE_ENROLAMIENTO": "LE",
+            "PASSPORT": "PASAPORTE",
+            "CERTIFICADO_MIGRATORIO": "CERT_MIGRATORIO",
+            "CERTIFICADO_DE_MIGRACION": "CERT_MIGRATORIO",
+            "CERT_MIGRATORIO": "CERT_MIGRATORIO",
+        }
+        return aliases.get(key, key)
+
     def _company_name(self):
         return self._safe(getattr(self.organization, "name", "EMPRESA"), "EMPRESA").upper()
 
@@ -97,6 +132,47 @@ class EmployeeLegajoTemplate:
         if isinstance(members, dict) and "value" in members:
             members = members["value"]
         return [member for member in members if isinstance(member, dict)] if isinstance(members, list) else []
+
+    @staticmethod
+    def _domicile_sketch(pdf, x, top, width, height):
+        def line(x1, y1, x2, y2):
+            pdf.line(
+                x + x1 * width,
+                PAGE_HEIGHT - top - y1 * height,
+                x + x2 * width,
+                PAGE_HEIGHT - top - y2 * height,
+            )
+
+        pdf.saveState()
+        pdf.setStrokeColorRGB(0.35, 0.35, 0.35)
+        pdf.setLineWidth(0.8)
+
+        # Central block and the interrupted outlines of the surrounding blocks form the map.
+        for segment in (
+            (0.21, 0.08, 0.29, 0.08),
+            (0.29, 0.08, 0.29, 0.22),
+            (0.39, 0.08, 0.86, 0.08),
+            (0.86, 0.08, 0.86, 0.22),
+            (0.21, 0.92, 0.29, 0.92),
+            (0.29, 0.78, 0.29, 0.92),
+            (0.39, 0.92, 0.86, 0.92),
+            (0.86, 0.78, 0.86, 0.92),
+            (0.08, 0.14, 0.08, 0.22),
+            (0.08, 0.22, 0.19, 0.22),
+            (0.08, 0.35, 0.08, 0.78),
+            (0.08, 0.78, 0.19, 0.78),
+            (0.92, 0.14, 0.92, 0.22),
+            (0.81, 0.22, 0.92, 0.22),
+            (0.92, 0.35, 0.92, 0.78),
+            (0.81, 0.78, 0.92, 0.78),
+            (0.29, 0.25, 0.86, 0.25),
+            (0.29, 0.25, 0.29, 0.75),
+            (0.86, 0.25, 0.86, 0.75),
+            (0.29, 0.75, 0.86, 0.75),
+        ):
+            line(*segment)
+
+        pdf.restoreState()
 
     def _background(self, pdf, page_number):
         raw = _template_backgrounds().get(page_number)
@@ -182,8 +258,9 @@ class EmployeeLegajoTemplate:
 
     def _page_one(self, pdf):
         self._background(pdf, 1)
-        pdf.setLineWidth(0.6)
-        pdf.rect(476, PAGE_HEIGHT - 27 - 64, 110, 64, fill=0, stroke=1)
+        legajo_number = self._value("file_number") or self._value("legajo_number", self.extra.get("legajo_number"))
+        self._draw_text(pdf, 484, 34, "LEG N°:", 9, bold=True)
+        self._draw_text(pdf, 531, 52, legajo_number, 11, bold=True, align="center")
         self._draw_text(pdf, PAGE_WIDTH / 2, 32, "FICHA DE INGRESO", 14, bold=True, align="center")
         self._section_title(pdf, "DATOS PERSONALES DEL TRABAJADOR", 62, boxed=True)
         self._field(pdf, 42, 88, "Apellido:", self._value("last_name"), 245)
@@ -200,11 +277,11 @@ class EmployeeLegajoTemplate:
         self._field(pdf, 42, 180, "F. Nacimiento:", self._date(getattr(self.employee, "birth_date", None)), 165)
         self._field(pdf, 220, 180, "Estudios cursados:", self.data.get("studies_completed"), 348)
         self._draw_text(pdf, 245, 194, "(en caso de estudios incompletos, informar último grado/año cursado)", 7)
-        doc_type = self._value("document_type", "DNI").upper().replace(".", "").replace(" ", "_")
+        doc_type = self._document_type_key(self._value("document_type", "DNI"))
         self._draw_text(pdf, 42, 216, "Tipo de Documento:", 10, bold=True)
         doc_types = [("DNI", 153), ("CI", 207), ("LC", 238), ("LE", 269), ("Pasaporte", 301), ("Cert. Migratorio", 378)]
         for option, x in doc_types:
-            option_key = option.upper().replace(".", "").replace(" ", "_")
+            option_key = self._document_type_key(option)
             self._checkbox(pdf, x, 216, option, checked=doc_type == option_key, size=8)
         self._field(pdf, 42, 240, "N° de Documento:", self._value("document_number") or self._value("dni"), 270)
         self._field(pdf, 324, 240, "N° Expediente:", self.data.get("document_expediente"), 244)
@@ -219,10 +296,17 @@ class EmployeeLegajoTemplate:
         self._field(pdf, 316, 325, "Tarea:", self._value("task"), 252)
         self._field(pdf, 42, 348, "Sección:", self._value("work_location"), 526)
         self._field(pdf, 42, 371, "Domicilio Sección:", self.data.get("section_address"), 360)
-        self._field(pdf, 412, 371, "Localidad:", self.data.get("section_locality"), 160)
+        section_locality = self.data.get("section_locality") or self._value("city")
+        self._field(pdf, 412, 371, "Localidad:", section_locality, 160)
 
         self._section_title(pdf, "INSCRIPCIONES", 398, boxed=True)
-        plan = str(self.data.get("retirement_plan", "")).lower()
+        plan = self._choice_key(self.data.get("retirement_plan") or self._value("pension_regime"))
+        plan = {
+            "afjp": "capitalizacion",
+            "sipa": "reparto",
+            "sistema_integrado_previsional_argentino": "reparto",
+            "sistema_de_reparto": "reparto",
+        }.get(plan, plan)
         self._draw_text(pdf, 42, 426, "Régimen Previsional:", 10, bold=True)
         self._checkbox(pdf, 184, 426, "Reparto", checked=plan == "reparto")
         self._checkbox(pdf, 267, 426, "Capitalización", checked=plan == "capitalizacion")
@@ -232,8 +316,16 @@ class EmployeeLegajoTemplate:
         self._field(pdf, 42, 472, "N° Cta. Bancaria:", self._value("account_number"), 260)
         self._field(pdf, 312, 472, "C.B.U.:", self._value("cbu"), 260)
         self._field(pdf, 42, 495, "Libreta Fdo. Desempleo N°:", self.data.get("booklet_number") or self._value("unemployment_fund_account"), 300)
-        self._field(pdf, 354, 495, "Tarjeta IERIC:", self._value("card_number", self.extra.get("card_number")), 218)
-        ieric_state = self.data.get("ieric_delivery_status", "")
+        ieric_number = (
+            self._value("ieric_number")
+            or self._value("card_number", self.extra.get("card_number"))
+        )
+        self._field(pdf, 354, 495, "Tarjeta IERIC:", ieric_number, 218)
+        ieric_state = self._choice_key(self.data.get("ieric_delivery_status"))
+        ieric_state = {
+            "entregado": "entregada",
+            "entrega": "entregada",
+        }.get(ieric_state, ieric_state)
         for label, x, value in (("A Tramitar", 42, "a_tramitar"), ("A Entregar", 198, "a_entregar"), ("Entregada", 354, "entregada")):
             self._checkbox(pdf, x, 516, label, checked=ieric_state == value)
 
@@ -245,7 +337,8 @@ class EmployeeLegajoTemplate:
             width=CONTENT_WIDTH - 26, size=6.5, leading=8,
         )
         self._signature(pdf, 352, 718, 215, "Firma Trabajador/a")
-        self._field(pdf, 42, 718, "LEG N°:", self._value("legajo_number", self.extra.get("legajo_number")), 200, size=9, bold=True)
+        pdf.setLineWidth(0.6)
+        pdf.rect(476, PAGE_HEIGHT - 27 - 64, 110, 64, fill=0, stroke=1)
         pdf.showPage()
 
     def _family_page(self, pdf, page_number, member):
@@ -283,9 +376,7 @@ class EmployeeLegajoTemplate:
         self._field(pdf, 42, 183, "Código Postal:", self._value("postal_code"), 140)
         self._field(pdf, 190, 183, "Localidad:", self._value("city"), 250)
         self._field(pdf, 448, 183, "Prov:", self._value("province"), 120)
-        photo_x, photo_top, photo_width, photo_height = 190, 232, 232, 150
-        pdf.setLineWidth(0.8)
-        pdf.rect(photo_x, PAGE_HEIGHT - photo_top - photo_height, photo_width, photo_height, fill=0, stroke=1)
+        self._domicile_sketch(pdf, 190, 232, 232, 150)
         self._paragraph(
             pdf, 42, 420,
             "DECLARO QUE EL DOMICILIO CONSIGNADO ES CORRECTO Y QUE SE DEBERÁ TOMAR COMO VÁLIDO PARA TODOS LOS EFECTOS LEGALES, COMPROMETIÉNDOME A INFORMAR CUALQUIER CAMBIO FUTURO QUE SE PRODUZCA SOBRE EL MISMO.",
@@ -364,10 +455,12 @@ class EmployeeLegajoTemplate:
             f"Solicito se me efectúe el aporte sindical voluntario con destino al SINDICATO {union} que me representa, en razón de",
             width=CONTENT_WIDTH, size=10, leading=14,
         )
-        authorization = str(self.data.get("union_voluntary", "")).lower()
-        self._checkbox(pdf, 42, 244, "SI", checked=authorization in ("si", "sí"), size=10)
+        authorization = self._choice_key(self.data.get("union_voluntary"))
+        if not authorization and union:
+            authorization = "si"
+        self._checkbox(pdf, 42, 244, "SI", checked=authorization in ("si", "yes", "true", "1"), size=10)
         self._draw_text(pdf, 77, 244, "/", 10, bold=True)
-        self._checkbox(pdf, 92, 244, "NO", checked=authorization == "no", size=10)
+        self._checkbox(pdf, 92, 244, "NO", checked=authorization in ("no", "false", "0"), size=10)
         self._draw_text(pdf, 124, 244, "encontrarme afiliado al mismo.", 10)
         self._signature(pdf, 42, 405, 300, "Firma del Trabajador:")
         self._signature(pdf, 42, 448, 300, "Aclaración:")
@@ -409,8 +502,9 @@ class EmployeeLegajoTemplate:
             self._family_page(pdf, 3, member)
         self._domicile_page(pdf)
         self._family_declaration_page(pdf)
-        self._clothing_page(pdf)
-        self._unemployment_booklet_page(pdf)
+        for page_name in ("clothing", "unemployment_booklet"):
+            if page_name in self.include_pages:
+                getattr(self, self.OPTIONAL_PAGES[page_name])(pdf)
         self._union_page(pdf)
         if self.include_termination_notice:
             self._termination_page(pdf)

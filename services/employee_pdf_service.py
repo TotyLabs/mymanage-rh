@@ -419,7 +419,7 @@ class EmployeePDFService:
             text("""
                   SELECT e.*, ed.floor, ed.apartment, ed.tower, ed.paraje,
                        ed.union_member_number, ed.unemployment_fund_account,
-                      ed.legajo_number, ed.card_number
+                      ed.legajo_number, ed.card_number, ed.ieric_number
                 FROM employees e
                 LEFT JOIN employee_extra_data ed ON ed.employee_id = e.id
                 WHERE e.id = :id AND e.organization_id = :org
@@ -576,7 +576,13 @@ class EmployeePDFService:
         doc.build(elements, onFirstPage=set_pdf_metadata)
         return buffer.getvalue()
 
-    def generate_record_pdf(self, employee_id: str, organization_id: str, include_termination_notice: bool = False) -> bytes:
+    def generate_record_pdf(
+        self,
+        employee_id: str,
+        organization_id: str,
+        include_termination_notice: bool = False,
+        include_pages=None,
+    ) -> bytes:
         emp = self.db.execute(
             text("""
                 SELECT e.*, ed.floor, ed.apartment, ed.tower, ed.paraje,
@@ -597,4 +603,6 @@ class EmployeePDFService:
         ).fetchone()
 
         from services.employee_legajo_template import EmployeeLegajoTemplate
-        return EmployeeLegajoTemplate(emp, org, include_termination_notice).generate()
+        return EmployeeLegajoTemplate(
+            emp, org, include_termination_notice, include_pages=include_pages
+        ).generate()

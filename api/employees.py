@@ -127,6 +127,19 @@ def persist_template_fields(db: Session, employee_id: str, raw_value, org_id: Op
     )
 
 
+def normalize_legajo_number_payload(payload: dict) -> dict:
+    payload = dict(payload)
+    legacy_value = payload.pop("legajo_number", None)
+    if legacy_value in (None, ""):
+        return payload
+
+    canonical_value = payload.get("file_number")
+    if canonical_value not in (None, "") and str(canonical_value).strip() != str(legacy_value).strip():
+        raise HTTPException(409, "legajo_number_conflict")
+    payload["file_number"] = canonical_value or legacy_value
+    return payload
+
+
 def _encryption_metadata_exists(db: Session, file_path: str | Path, organization_id: str) -> bool:
     try:
         storage_key = EncryptionService.storage_key(file_path)
@@ -507,7 +520,7 @@ async def upsert_employee(
     
     # 1. Capture all form data
     form_data = await request.form()
-    raw_payload = {k: v for k, v in form_data.items()}
+    raw_payload = normalize_legajo_number_payload({k: v for k, v in form_data.items()})
     
     # 2. Process via Ingestion Nucleus in a transaction
     try:
@@ -754,6 +767,7 @@ async def update_employee(
     else:
         form = await request.form()
         payload = {k: v for k, v in form.items()}
+    payload = normalize_legajo_number_payload(payload)
 
     try:
         with safe_transaction(db):
@@ -807,7 +821,6 @@ async def update_employee(
                 "tower": "tower",
                 "union_member_number": "union_member_number",
                 "unemployment_fund_account": "unemployment_fund_account",
-                "legajo_number": "legajo_number",
                 "card_number": "card_number",
                 "paraje": "paraje",
             }
@@ -1513,6 +1526,7 @@ async def get_my_signature(
 async def get_employee_record_pdf(
     emp_id: str,
     include_termination_notice: bool = Query(default=False),
+    include_pages: list[str] = Query(default=[]),
     user=Depends(require_auth),
     db: Session = Depends(get_db)
 ):
@@ -1535,7 +1549,12 @@ async def get_employee_record_pdf(
     
     try:
         pdf_service = EmployeePDFService(db)
-        pdf_bytes = pdf_service.generate_record_pdf(emp_id, org_id, include_termination_notice=include_termination_notice)
+        pdf_bytes = pdf_service.generate_record_pdf(
+            emp_id,
+            org_id,
+            include_termination_notice=include_termination_notice,
+            include_pages=include_pages,
+        )
         employee = db.execute(text("""
             SELECT first_name, last_name FROM employees
             WHERE id = :id AND organization_id = :org
@@ -1545,7 +1564,19 @@ async def get_employee_record_pdf(
         safe_filename = re.sub(r"[^A-Za-z0-9._ -]", "", document_title).strip() or "LEGAJO DE PERSONAL"
         
         # Audit log
-        audit(db, org_id, user["role"], user["id"], "EMPLOYEE_RECORD_DOWNLOADED", emp_id, {"format": "pdf", "termination_notice": include_termination_notice})
+        audit(
+            db,
+            org_id,
+            user["role"],
+            user["id"],
+            "EMPLOYEE_RECORD_DOWNLOADED",
+            emp_id,
+            {
+                "format": "pdf",
+                "termination_notice": include_termination_notice,
+                "include_pages": include_pages,
+            },
+        )
         
         return StreamingResponse(
             io.BytesIO(pdf_bytes), 
@@ -1558,6 +1589,8 @@ async def get_employee_record_pdf(
     except ValueError as e:
         if str(e) == "employee_not_found":
             raise HTTPException(404, "empleado_no_encontrado")
+        if str(e) in ("invalid_optional_legajo_page", "duplicate_optional_legajo_page"):
+            raise HTTPException(400, str(e))
         raise HTTPException(400, str(e))
     except Exception as e:
         logger.exception("record_pdf_generation_error")

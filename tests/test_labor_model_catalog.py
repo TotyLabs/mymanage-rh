@@ -38,13 +38,17 @@ def test_catalog_contains_all_supplied_models_and_templates():
     expected_codes = {
         "TLG-INT-001", "TLG-RRL-002", "ATD-003", "CTTD-004", "CTE-005",
         "NEA-006", "CTT-007", "CTP-008", "PPCT-009", "CTI-010",
-        "AAS-011", "AI-012",
+        "AAS-011", "AI-012", "ERT-013",
     }
 
     assert set(labor_model_service.MODEL_CATALOG) == expected_codes
     for model in labor_model_service.MODEL_CATALOG.values():
         assert model["template_path"].startswith("Modelos Laborales/")
         assert (labor_model_service.ROOT / model["template_path"]).is_file()
+
+    construction_model = labor_model_service.MODEL_CATALOG["ERT-013"]
+    assert construction_model["category"] == "Construccion"
+    assert construction_model["template_path"].endswith("Plantilla Entrega Ropa Trabajo ERT-013 MyManageRH.pdf")
 
 
 def test_company_allowlist_restricts_models_and_allows_tlg_int_001(monkeypatch):

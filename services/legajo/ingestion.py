@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from models import Employee, EmployeeStatus, ImportMode
+from models import Employee, EmployeeExtraData, EmployeeStatus, ImportMode
 from .schema_manager import SchemaManager
 from .normalizer import Normalizer
 from .validator import Validator, ValidationIssue
@@ -157,6 +157,19 @@ class IngestionService:
                     message=f"Legajo '{match.inferred_legajo}' inferido automáticamente desde identidad legal (DNI/CUIL)."
                 ))
 
+            if match.employee_id and self._has_legacy_legajo_conflict(match.employee_id):
+                issues.append(ValidationIssue(
+                    level="warning",
+                    code="LEGACY_LEGAJO_CONFLICT_PRESERVED",
+                    message="Existe un número de legajo histórico distinto; se conserva sin modificar.",
+                    field_path="employment.file_number",
+                ))
+                logger.warning(
+                    "%s LEGACY_LEGAJO_CONFLICT_PRESERVED: employee_id=%s",
+                    self._ctx,
+                    match.employee_id,
+                )
+
             # 5. Persist (Insert/Update)
             employee_id = None
             if not is_preview:
@@ -191,6 +204,21 @@ class IngestionService:
                 pass  # Session may already be invalidated
             return IngestionResult("failed", execution_time_ms=(time.time()-start_time)*1000, 
                                    issues=[ValidationIssue(level="error", code="INTERNAL_ERROR", message=str(e))])
+
+    def _has_legacy_legajo_conflict(self, employee_id: str) -> bool:
+        row = self.db.query(Employee, EmployeeExtraData.legajo_number).outerjoin(
+            EmployeeExtraData,
+            EmployeeExtraData.employee_id == Employee.id,
+        ).filter(Employee.id == employee_id).first()
+        if not row:
+            return False
+        employee, historical_legajo = row
+        canonical_legajo = getattr(employee, "file_number", None)
+        return (
+            canonical_legajo not in (None, "")
+            and historical_legajo not in (None, "")
+            and str(canonical_legajo).strip() != str(historical_legajo).strip()
+        )
 
     def _upsert_canonical(self, record, match: MatchingResult, mode: IngestionMode) -> Employee:
         """Handles the actual DB persistence of a Canonical Record."""
