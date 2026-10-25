@@ -30,9 +30,14 @@ No usar valores reales en documentación. Usar `.env.example` o `.env.template` 
 | `SECRET_KEY` | Sesiones, tokens y HMAC internos. | Sí |
 | `STORAGE_PATH` | Directorio base de archivos. | No, pero no exponer ruta real pública |
 | `APP_ENCRYPTION_ENABLED` | Activa cifrado app-level de archivos sensibles. | No |
-| `APP_ENCRYPTION_PROVIDER` | Provider KMS: `aws`, `gcp` o `local`. | No |
+| `APP_ENCRYPTION_PROVIDER` | Provider KMS: `aws`, `gcp`, `vault` o `local`. | No |
 | `APP_ENCRYPTION_KMS_KEY_ID` | Identificador de KEK/KMS. | No, pero tratar como configuración sensible |
 | `APP_ENCRYPTION_AWS_REGION` | Región AWS KMS si aplica. | No |
+| `VAULT_ADDR` | URL HTTPS del servidor HashiCorp Vault. | No |
+| `VAULT_TRANSIT_MOUNT` | Mount Transit; por defecto `transit`. | No |
+| `VAULT_CACERT` | Certificado CA PEM para una autoridad privada; si se omite, se usa el almacén de CA del sistema. | No |
+| `VAULT_TOKEN_FILE` | Ruta al token efímero entregado por Vault Agent. Preferido sobre `VAULT_TOKEN`. | Sí |
+| `VAULT_TOKEN` | Token de Vault; usar sólo si no se puede integrar Vault Agent. | Sí |
 | `APP_ENCRYPTION_LOCAL_MASTER_KEY` | Master key local sólo para dev/testing. | Sí |
 | `MAX_UPLOAD_SIZE_MB` | Límite de carga. | No |
 | `MAX_PDF_PAGES` | Límite de páginas. | No |
@@ -134,17 +139,18 @@ Nunca versionar P12 real, llaves privadas, passwords ni PINs HSM.
 Antes de activar en staging o producción:
 
 1. Ejecutar migración `20260425_file_encryption_metadata`.
-2. Provider KMS productivo: AWS KMS (configurar `APP_ENCRYPTION_PROVIDER=aws`).
-3. Configurar `APP_ENCRYPTION_ENABLED=true`.
-4. Configurar `APP_ENCRYPTION_PROVIDER=aws` o `APP_ENCRYPTION_PROVIDER=gcp`.
-5. Configurar `APP_ENCRYPTION_KMS_KEY_ID`.
-6. Validar permisos mínimos del rol de aplicación para `GenerateDataKey`/`Decrypt` o equivalente.
+2. Elegir AWS KMS, Google Cloud KMS o HashiCorp Vault Transit.
+3. Configurar `APP_ENCRYPTION_ENABLED=true` y el provider correspondiente.
+4. Configurar `APP_ENCRYPTION_KMS_KEY_ID` con el ID/alias de clave del proveedor.
+5. Para Vault Transit, configurar `VAULT_ADDR` con HTTPS, `VAULT_TRANSIT_MOUNT` si no es `transit`, `VAULT_CACERT` si se usa CA privada, y preferir `VAULT_TOKEN_FILE` alimentado por Vault Agent.
+6. Otorgar a la identidad de aplicación permiso sólo para cifrar/descifrar en la clave requerida.
 7. Probar carga, firma, descarga y restore con datos ficticios.
 
 Dependencias por provider:
 
 - AWS KMS requiere SDK AWS (`boto3`) instalado en el ambiente.
 - Google Cloud KMS requiere SDK Google Cloud KMS (`google-cloud-kms`) instalado en el ambiente.
+- Vault Transit usa el cliente HTTP ya incluido (`requests`) y requiere acceso de red HTTPS al Vault.
 - Local no requiere SDK externo, pero no está permitido para producción.
 
 Modo local:

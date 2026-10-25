@@ -39,6 +39,7 @@ export async function render(container) {
     activeTab: 'PAYROLL',
     receipts: [],
     documents: [],
+    legajos: [],
     grouped: {},
     mode: 'date',
     sortMode: 'chronological',
@@ -65,6 +66,7 @@ export async function render(container) {
 
       <div class="tabs empresa-tabs mb-24">
         <button class="tab-item active" data-tab="PAYROLL">Recibos de Nómina</button>
+        <button class="tab-item" data-tab="LEGAJOS">Legajos</button>
         <button class="tab-item" data-tab="TRANSFER">Transferencias Bancarias</button>
         <button class="tab-item" data-tab="ART">Listados ART</button>
         <button class="tab-item" data-tab="UNEMPLOYMENT">Fondo de Desempleo</button>
@@ -117,6 +119,17 @@ export async function render(container) {
               </table>
             </div>
          </div>
+
+         <div id="legajoView" class="empresa-hub-view hidden">
+            <div class="table-container">
+              <table class="table" id="legajosTable">
+                <thead>
+                  <tr><th>Fecha de envío</th><th>Empleado</th><th>Correo</th><th>Estado</th><th>Fecha de firma</th><th>Acciones</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+         </div>
       </div>
     </section>
 
@@ -137,11 +150,14 @@ export async function render(container) {
 
   function switchTab() {
     const isPayroll = state.activeTab === 'PAYROLL';
+    const isLegajos = state.activeTab === 'LEGAJOS';
     el('payrollView', container).classList.toggle('hidden', !isPayroll);
-    el('genericView', container).classList.toggle('hidden', isPayroll);
+    el('genericView', container).classList.toggle('hidden', isPayroll || isLegajos);
+    el('legajoView', container).classList.toggle('hidden', !isLegajos);
     
     // Auto-refresh when switching
     if (isPayroll) loadHistory();
+    else if (isLegajos) loadLegajoHistory();
     else loadGenericDocuments();
   }
 
@@ -423,6 +439,70 @@ export async function render(container) {
     return row;
   }
 
+  async function loadLegajoHistory() {
+    const hubLoading = el('hubLoading', container);
+    const view = el('legajoView', container);
+    const tbody = container.querySelector('#legajosTable tbody');
+    hubLoading.textContent = 'Cargando repositorio...';
+    hubLoading.classList.remove('hidden');
+    view.classList.add('hidden');
+    try {
+      const response = await apiFetch('/api/employee-legajos/history');
+      state.legajos = response?.legajos || [];
+      tbody.innerHTML = '';
+      if (!state.legajos.length) {
+        hubLoading.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-title">No hay legajos enviados</div>
+            <div class="empty-desc">Los legajos enviados para firma aparecerán aquí.</div>
+          </div>
+        `;
+        hubLoading.classList.remove('hidden');
+        return;
+      }
+      state.legajos.forEach((legajo) => {
+        const row = document.createElement('tr');
+        const sentAt = document.createElement('td');
+        sentAt.textContent = new Date(legajo.created_at).toLocaleString('es-AR');
+        const employee = document.createElement('td');
+        employee.textContent = legajo.employee_name || '—';
+        const email = document.createElement('td');
+        email.textContent = legajo.employee_email || '—';
+        const statusCell = document.createElement('td');
+        const badge = document.createElement('span');
+        badge.className = `badge ${legajo.status === 'signed' ? 'success' : legajo.status === 'pending' ? 'warning' : 'neutral'}`;
+        badge.textContent = legajo.status === 'signed'
+          ? 'Firmado'
+          : legajo.status === 'pending'
+            ? 'Pendiente firma empleado'
+            : legajo.status === 'expired'
+              ? 'Vencido'
+              : 'Cancelado';
+        statusCell.appendChild(badge);
+        const signedAt = document.createElement('td');
+        signedAt.textContent = legajo.signed_at ? new Date(legajo.signed_at).toLocaleString('es-AR') : '—';
+        const actions = document.createElement('td');
+        actions.className = 'table-actions';
+        const viewButton = document.createElement('button');
+        viewButton.type = 'button';
+        viewButton.className = 'btn btn-ghost btn-sm';
+        viewButton.textContent = legajo.status === 'signed' ? 'Ver firmado' : 'Ver enviado';
+        viewButton.onclick = () => window.open(
+          `/api/employee-legajos/${encodeURIComponent(legajo.id)}/pdf?version=${legajo.status === 'signed' ? 'signed' : 'source'}`,
+          '_blank',
+          'noopener',
+        );
+        actions.appendChild(viewButton);
+        row.append(sentAt, employee, email, statusCell, signedAt, actions);
+        tbody.appendChild(row);
+      });
+      hubLoading.classList.add('hidden');
+      view.classList.remove('hidden');
+    } catch (error) {
+      showError(hubLoading, error);
+    }
+  }
+
   // --- DATA FETCHING (GENERIC DOCUMENTS) ---
   async function loadGenericDocuments() {
     const hubLoading = el('hubLoading', container);
@@ -482,6 +562,7 @@ export async function render(container) {
   // --- UTILS ---
   el('btnRefreshHub', container).onclick = () => {
     if (state.activeTab === 'PAYROLL') loadHistory();
+    else if (state.activeTab === 'LEGAJOS') loadLegajoHistory();
     else loadGenericDocuments();
   };
 

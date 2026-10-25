@@ -154,3 +154,13 @@ Recomendaciones adicionales: ejecutar procesamiento PDF en sandbox, validar exte
 | Certificados locales | No usar certificados de desarrollo en producción. |
 | Firma visual | No sustituye por sí sola a firma criptográfica validable. |
 | QR público | Debe limitar datos expuestos para evitar filtración de PII. |
+
+## 14. Firma de legajos de empleados
+
+Los legajos enviados para firma tienen un ciclo de vida separado de recibos y se almacenan en `employee_legajo_signatures`. Al emitir una solicitud se genera el PDF del legajo y se conserva como snapshot inmutable; el hash del PDF se verifica al descifrarlo para previsualización y firma. Los archivos fuente y firmado usan cifrado administrado por KMS y metadata en `file_encryption_metadata`.
+
+La solicitud conserva un hash del token personal, con vencimiento a los siete días, y permite una única solicitud pendiente por empleado y organización. La firma requiere sesión del empleado asociado, organización coincidente, CUIL normalizado coincidente con el snapshot registrado y firma previamente guardada en la cuenta. El sistema registra hashes de documentos y firma, usuario, fechas, IP y user-agent.
+
+Para legajos, el motor aplica la firma visual y el sello de validación a cada página; la firma criptográfica PDF se aplica una sola vez al documento completo. El PDF firmado solo se lista en el historial de la empresa. La cuenta del empleado lista exclusivamente solicitudes pendientes y deja de mostrar el legajo al completarse la firma.
+
+La firma visual y la firma criptográfica son evidencia técnica y deben revisarse junto con asesoría legal para determinar los requisitos aplicables a legajos y contratos laborales.

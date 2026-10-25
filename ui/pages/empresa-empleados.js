@@ -1280,6 +1280,91 @@ export async function render(container) {
       }
 
       actionBox.append(btnProfile, btnDownload, btnEdit, btnDel);
+
+      if (!isDeleted) {
+        const menuWrap = document.createElement('div');
+        menuWrap.className = 'empresa-employee-more-menu';
+        menuWrap.style.position = 'relative';
+
+        const menuTrigger = document.createElement('button');
+        menuTrigger.type = 'button';
+        menuTrigger.className = 'btn btn-ghost btn-sm empresa-icon-btn empresa-employee-action';
+        menuTrigger.textContent = '⋯';
+        menuTrigger.title = 'Más acciones';
+        menuTrigger.setAttribute('aria-label', `Más acciones para ${emp.first_name || 'empleado'}`);
+        menuTrigger.setAttribute('aria-expanded', 'false');
+
+        const menu = document.createElement('div');
+        menu.className = 'card hidden';
+        menu.style.position = 'absolute';
+        menu.style.right = '0';
+        menu.style.top = '100%';
+        menu.style.zIndex = '20';
+        menu.style.minWidth = '190px';
+        menu.style.padding = '6px';
+
+        const sendLegajo = document.createElement('button');
+        sendLegajo.type = 'button';
+        sendLegajo.className = 'btn btn-ghost btn-sm';
+        sendLegajo.style.width = '100%';
+        sendLegajo.style.textAlign = 'left';
+        const sendLegajoLabel = document.createElement('span');
+        sendLegajoLabel.textContent = 'Enviar legajo para firmar';
+        const sealPositionIndicator = document.createElement('span');
+        sealPositionIndicator.className = 'legajo-seal-position-indicator';
+        sealPositionIndicator.setAttribute('aria-hidden', 'true');
+        sendLegajo.title = 'Enviar legajo para firmar. Posición del sello pendiente de ajuste.';
+        sendLegajo.append(sendLegajoLabel, sealPositionIndicator);
+        sendLegajo.onclick = async () => {
+          menu.classList.add('hidden');
+          menuTrigger.setAttribute('aria-expanded', 'false');
+          const employeeName = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || 'este empleado';
+          const confirmButton = document.querySelector('#confirmOk');
+          const cancelButton = document.querySelector('#confirmCancel');
+          const originalConfirmText = confirmButton?.textContent;
+          const originalCancelText = cancelButton?.textContent;
+          if (confirmButton) confirmButton.textContent = 'Sí';
+          if (cancelButton) cancelButton.textContent = 'No';
+          let confirmed = false;
+          try {
+            confirmed = await confirmAction(`¿Enviar el legajo de ${employeeName} para firmar?`);
+          } finally {
+            if (confirmButton && originalConfirmText) confirmButton.textContent = originalConfirmText;
+            if (cancelButton && originalCancelText) cancelButton.textContent = originalCancelText;
+          }
+          if (!confirmed) return;
+
+          sendLegajo.disabled = true;
+          sendLegajoLabel.textContent = 'Enviando...';
+          try {
+            await apiFetch(`/api/employee-legajos/${encodeURIComponent(emp.id)}/send`, { method: 'POST' });
+            showToast('Legajo enviado al correo del empleado para su firma.', 'success');
+          } catch (error) {
+            const detail = error?.body?.detail;
+            const messages = {
+              empleado_sin_email: 'El empleado no tiene un correo registrado.',
+              email_empleado_invalido: 'El correo registrado del empleado no es válido.',
+              empleado_sin_cuil_valido: 'El empleado necesita un CUIL válido para recibir un legajo para firmar.',
+              ya_existe_legajo_pendiente: 'Este empleado ya tiene un legajo pendiente de firma.',
+              solicitud_creada_pero_no_se_pudo_enviar_el_correo: 'No se pudo enviar el correo. Podés volver a intentar el envío.',
+            };
+            showToast(messages[detail] || String(detail || 'No se pudo enviar el legajo para firmar.'), 'error');
+          } finally {
+            sendLegajo.disabled = false;
+            sendLegajoLabel.textContent = 'Enviar legajo para firmar';
+          }
+        };
+        menu.appendChild(sendLegajo);
+        menuTrigger.onclick = (event) => {
+          event.stopPropagation();
+          const open = menu.classList.contains('hidden');
+          menu.classList.toggle('hidden', !open);
+          menuTrigger.setAttribute('aria-expanded', String(open));
+        };
+        menuWrap.append(menuTrigger, menu);
+        actionBox.appendChild(menuWrap);
+      }
+
       tdActions.appendChild(actionBox);
 
       btnDownload.onclick = () => {

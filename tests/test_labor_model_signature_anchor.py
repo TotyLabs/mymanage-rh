@@ -86,3 +86,47 @@ def test_labor_model_stamp_rejects_missing_anchor(tmp_path):
             doc_type="LABOR_MODEL",
             source="labor_model",
         )
+
+
+def test_employee_legajo_signature_is_stamped_on_every_page(tmp_path):
+    source = tmp_path / "employee-legajo.pdf"
+    with fitz.open() as document:
+        for page_number in range(3):
+            page = document.new_page()
+            page.insert_text((72, 72), f"Legajo página {page_number + 1}")
+        document.save(source)
+
+    image = Image.new("RGBA", (240, 80), (0, 0, 0, 255))
+    image_buffer = BytesIO()
+    image.save(image_buffer, format="PNG")
+    engine = SignatureEngine(storage_path=tmp_path / "signature-storage")
+    result = engine.stamp_signature_from_bytes(
+        pdf_path=str(source),
+        signature_bytes=image_buffer.getvalue(),
+        role="employee",
+        signer_name="Empleado de prueba",
+        signer_tax_id="20123456786",
+        signer_identity={
+            "dni": "12345678",
+            "full_name": "Empleado de prueba",
+            "role": "employee",
+            "email": "empleado@example.com",
+        },
+        timestamp=datetime.now(timezone.utc),
+        output_path=str(tmp_path / "employee-legajo-signed.pdf"),
+        doc_type="EMPLOYEE_LEGAJO",
+        source="employee_legajo",
+        apply_to_all_pages=True,
+    )
+
+    with fitz.open(result["signed_pdf_path"]) as signed:
+        assert signed.page_count == 3
+        for page in signed:
+            image_rects = [
+                rect
+                for image in page.get_images(full=True)
+                for rect in page.get_image_rects(image[0])
+            ]
+            assert len(image_rects) >= 2
+            assert all(page.rect.contains(rect) for rect in image_rects)
+            assert "Documento: Legajo de Personal" in page.get_text()

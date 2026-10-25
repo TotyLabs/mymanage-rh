@@ -14,6 +14,7 @@ from services.encryption_service import (
     EncryptionService,
     KmsError,
     LocalKmsProvider,
+    VaultTransitProvider,
 )
 
 
@@ -239,3 +240,83 @@ def test_trace_id_in_metadata(encryption_service, sensitive_file):
     )
     assert "trace_id" in metadata
     assert len(metadata["trace_id"]) > 30 # UUID4 format
+
+
+def test_vault_transit_wraps_and_unwraps_data_keys(monkeypatch):
+    import base64
+    import requests
+
+    class _Response:
+        status_code = 200
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return {"data": self._payload}
+
+    class _Session:
+        def __init__(self):
+            self.headers = requests.structures.CaseInsensitiveDict()
+            self.calls = []
+
+        def post(self, url, *, json, timeout, allow_redirects, verify):
+            self.calls.append((url, json, timeout, allow_redirects, verify))
+            if "/encrypt/" in url:
+                return _Response({"ciphertext": f"vault:v1:{json['plaintext']}"})
+            return _Response({"plaintext": json["ciphertext"].removeprefix("vault:v1:")})
+
+    provider = VaultTransitProvider(
+        "https://vault.example",
+        "mymanage-general",
+        token="test-token",
+    )
+    auth_headers = provider._session.headers
+    session = _Session()
+    provider._session = session
+
+    generated = provider.generate_data_key({"purpose": "test"})
+    decrypted = provider.decrypt_data_key(
+        generated.encrypted_data_key,
+        {"purpose": "test"},
+        generated.kms_key_id,
+    )
+
+    assert len(generated.plaintext_key) == 32
+    assert bytes(decrypted) == bytes(generated.plaintext_key)
+    assert generated.kms_key_id == "mymanage-general"
+    assert generated.provider == "vault"
+    assert auth_headers["X-Vault-Token"] == "test-token"
+    assert session.calls[0][0] == "https://vault.example/v1/transit/encrypt/mymanage-general"
+    assert session.calls[0][2:] == (10, False, True)
+    assert base64.b64decode(session.calls[0][1]["plaintext"]) == bytes(generated.plaintext_key)
+
+
+def test_vault_transit_rejects_http_and_missing_auth():
+    with pytest.raises(KmsError, match="HTTPS"):
+        VaultTransitProvider("http://vault.example", "mymanage-general", token="test-token")
+
+    with pytest.raises(KmsError, match="VAULT_TOKEN"):
+        VaultTransitProvider("https://vault.example", "mymanage-general")
+
+
+def test_vault_transit_surfaces_permission_errors():
+    class _Response:
+        status_code = 403
+
+    class _Session:
+        def __init__(self):
+            self.headers = {}
+
+        def post(self, *args, **kwargs):
+            return _Response()
+
+    provider = VaultTransitProvider(
+        "https://vault.example",
+        "mymanage-general",
+        token="test-token",
+    )
+    provider._session = _Session()
+
+    with pytest.raises(KmsError, match="failed:403"):
+        provider.generate_data_key({})

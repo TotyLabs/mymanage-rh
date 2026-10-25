@@ -222,10 +222,15 @@ if not SECRET_KEY:
 # real payroll data should set this to true after the migration is applied.
 APP_ENCRYPTION_ENABLED = os.getenv("APP_ENCRYPTION_ENABLED", "false").lower() == "true"
 
-# Provider options: aws, gcp, local. Local is for development/testing only.
+# Provider options: aws, gcp, vault, local. Local is for development/testing only.
 APP_ENCRYPTION_PROVIDER = os.getenv("APP_ENCRYPTION_PROVIDER", "local").lower()
 APP_ENCRYPTION_KMS_KEY_ID = os.getenv("APP_ENCRYPTION_KMS_KEY_ID", "")
 APP_ENCRYPTION_AWS_REGION = os.getenv("APP_ENCRYPTION_AWS_REGION", "")
+APP_ENCRYPTION_VAULT_ADDR = os.getenv("VAULT_ADDR", "")
+APP_ENCRYPTION_VAULT_TOKEN = os.getenv("VAULT_TOKEN", "")
+APP_ENCRYPTION_VAULT_TOKEN_FILE = os.getenv("VAULT_TOKEN_FILE", "")
+APP_ENCRYPTION_VAULT_MOUNT = os.getenv("VAULT_TRANSIT_MOUNT", "transit")
+APP_ENCRYPTION_VAULT_CACERT = os.getenv("VAULT_CACERT", "")
 
 # Required only for APP_ENCRYPTION_PROVIDER=local. Must be base64 for 32 bytes.
 APP_ENCRYPTION_LOCAL_MASTER_KEY = os.getenv("APP_ENCRYPTION_LOCAL_MASTER_KEY", "")

@@ -600,7 +600,7 @@ async def login(
     if not row.is_active:
         raise HTTPException(403, "cuenta_desactivada")
 
-    if row.user_status != "active":
+    if row.user_status not in {"active", "full", "lightweight"}:
         metrics_registry.record_auth(success=False, rate_limit=False, token_invalid=False)
         raise HTTPException(403, "cuenta_no_verificada")
 

@@ -521,6 +521,11 @@ def validate_token_format(token: str) -> None:
 
 
 
+def user_status_allows_session(user_status: Optional[str]) -> bool:
+    status = str(user_status or "").strip().lower()
+    return status not in {"", "pending_verification"}
+
+
 def get_current_user(db: Session, session_token: Optional[str]) -> Optional[Dict[str, Any]]:
     if not session_token:
         return None
@@ -553,9 +558,12 @@ def get_current_user(db: Session, session_token: Optional[str]) -> Optional[Dict
                                 LEFT JOIN organizations o ON o.id = u.organization_id
                                 WHERE u.id = :user_id
                                   AND u.is_active = true
+                                  AND u.user_status != 'pending_verification'
                             """), {"user_id": user_id}).fetchone()
                             if row:
                                 m = row._mapping
+                                if not user_status_allows_session(m["user_status"]):
+                                    return None
                                 emp_id = str(m["employee_id"]) if m["employee_id"] else None
                                 if not emp_id and m["organization_id"] and m["email"]:
                                     res_emp = db.execute(text("""
@@ -596,6 +604,7 @@ def get_current_user(db: Session, session_token: Optional[str]) -> Optional[Dict
         LEFT JOIN organizations o ON o.id = u.organization_id
         WHERE s.session_token_hash = :token_hash 
           AND u.is_active = true
+          AND u.user_status != 'pending_verification'
           AND (
               s.expires_at > :now 
               OR (u.user_status = 'otp_session' AND s.expires_at > :grace_now)
@@ -605,6 +614,8 @@ def get_current_user(db: Session, session_token: Optional[str]) -> Optional[Dict
         return None
     # Normalize row to mapping for explicit and stable access
     m = row._mapping
+    if not user_status_allows_session(m["user_status"]):
+        return None
     
     # GAP-024: Dynamic Employee Link (Robustness for Enterprise/Payroll hybrid)
     emp_id = str(m["employee_id"]) if m["employee_id"] else None
@@ -685,6 +696,9 @@ def require_auth(
                 "auth_method": "bearer" if "Bearer " in (request.headers.get("Authorization") or "") else "session"
             }
         )
+        raise HTTPException(401, "not_authenticated")
+
+    if not user_status_allows_session(user.get("user_status")):
         raise HTTPException(401, "not_authenticated")
     
     # Phase 1 Hardening: Row-Level Security (RLS) Session Injection

@@ -134,6 +134,13 @@ Notas: el sistema registra intentos fallidos, puede bloquear temporalmente la cu
 | `POST` | `/api/employees/{employee_id}/dni-upload` | Carga imagen DNI. | Admin |
 | `GET` | `/api/employees/{employee_id}/dni-image` | Consulta imagen DNI. | Admin |
 | `GET` | `/api/employees/{emp_id}/record-pdf` | Genera PDF de legajo. | Autenticado con autorización |
+| `POST` | `/api/employee-legajos/{employee_id}/send` | Genera un snapshot cifrado de legajo y lo envía al empleado para firmar. | Admin |
+| `GET` | `/api/employee-legajos/pending` | Lista solo los legajos pendientes del empleado autenticado. | Empleado |
+| `GET` | `/api/employee-legajos/pending/{identifier}` | Consulta la solicitud pendiente propia por ID o token. | Empleado asociado |
+| `GET` | `/api/employee-legajos/pending/{identifier}/pdf` | Visualiza el PDF pendiente propio. | Empleado asociado |
+| `POST` | `/api/employee-legajos/pending/{identifier}/sign` | Valida CUIL y firma todas las páginas con la firma guardada. | Empleado asociado |
+| `GET` | `/api/employee-legajos/history` | Lista solicitudes de legajos de la organización. | Admin |
+| `GET` | `/api/employee-legajos/{legajo_id}/pdf?version=signed` | Descarga/visualiza el PDF del historial empresarial. | Admin |
 | `POST` | `/api/legajo/preview` | Previsualiza importación de legajo. | Autenticado |
 | `POST` | `/api/legajo/execute` | Ejecuta importación. | Autenticado |
 | `GET` | `/api/legajo/export` | Exporta legajo. | Autenticado |

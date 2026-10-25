@@ -5,6 +5,7 @@ export async function render(container) {
   const state = {
     me: null,
     receipts: [],
+    legajos: [],
     activeSection: 'PAYROLL',
   };
 
@@ -20,6 +21,7 @@ export async function render(container) {
       <button class="tab-item active" data-section="PAYROLL">Recibos</button>
       <button class="tab-item" data-section="UNEMPLOYMENT">Fondo de Desempleo</button>
       <button class="tab-item" data-section="MISC">Varios</button>
+      <button class="tab-item" data-section="LEGAJOS">Legajos</button>
     </div>
 
     <div id="notif-alert-box" class="hidden mb-24">
@@ -208,12 +210,86 @@ export async function render(container) {
     tabs.forEach((tab) => {
       tab.classList.toggle('active', tab.dataset.section === section);
     });
+    if (section === 'LEGAJOS') {
+      void loadPendingLegajos();
+      return;
+    }
+
+    const tableTitle = container.querySelector('.card-header .card-title');
+    if (tableTitle) tableTitle.textContent = 'Listado de Recibos';
+    const headings = container.querySelectorAll('#receiptsTable thead th');
+    if (headings.length >= 6) {
+      ['Fecha', 'Período', 'Empresa', 'Estado', 'Tipo', 'Acciones'].forEach((label, index) => {
+        headings[index].textContent = label;
+      });
+    }
     const visibleReceipts = getVisibleReceipts();
     if (!visibleReceipts.length) {
       renderSectionEmpty();
     } else {
       renderReceiptsTable(visibleReceipts);
       showTable();
+    }
+  }
+
+  async function loadPendingLegajos() {
+    const tableTitle = container.querySelector('.card-header .card-title');
+    if (tableTitle) tableTitle.textContent = 'Legajos pendientes de firma';
+    const headings = container.querySelectorAll('#receiptsTable thead th');
+    if (headings.length >= 6) {
+      ['Fecha de envío', 'Documento', 'Empresa', 'Estado', 'Tipo', 'Acciones'].forEach((label, index) => {
+        headings[index].textContent = label;
+      });
+    }
+    try {
+      const response = await apiFetch('/api/employee-legajos/pending');
+      state.legajos = response?.legajos || [];
+      tbodyEl.innerHTML = '';
+      if (!state.legajos.length) {
+        showEmpty(renderEmptyState('No tenés legajos pendientes de firma.', 'Cuando tu empresa te envíe un legajo, aparecerá aquí.'));
+        return;
+      }
+
+      emptyEl.classList.add('hidden');
+      tableWrapEl.classList.remove('hidden');
+      state.legajos.forEach((legajo) => {
+        const tr = document.createElement('tr');
+        const date = document.createElement('td');
+        date.textContent = legajo.created_at ? new Date(legajo.created_at).toLocaleString('es-AR') : '—';
+        const title = document.createElement('td');
+        title.textContent = `Legajo de ${legajo.employee_name || state.me?.full_name || 'empleado'}`;
+        const company = document.createElement('td');
+        company.textContent = legajo.organization_name || '—';
+        const status = document.createElement('td');
+        status.appendChild(createStatusBadge('pending'));
+        const type = document.createElement('td');
+        type.textContent = 'Legajos';
+        const actions = document.createElement('td');
+        actions.className = 'table-actions';
+        const viewButton = document.createElement('button');
+        viewButton.type = 'button';
+        viewButton.className = 'btn btn-ghost btn-sm';
+        viewButton.textContent = 'Ver PDF';
+        viewButton.onclick = () => window.open(
+          `${getApiBase()}/api/employee-legajos/pending/${encodeURIComponent(legajo.id)}/pdf`,
+          '_blank',
+          'noopener',
+        );
+        const signButton = document.createElement('button');
+        signButton.type = 'button';
+        signButton.className = 'btn btn-primary btn-sm';
+        signButton.textContent = 'Firmar ahora';
+        signButton.onclick = () => {
+          location.hash = `#/empleado/legajo-firma/${encodeURIComponent(legajo.id)}`;
+        };
+        actions.append(viewButton, signButton);
+        tr.append(date, title, company, status, type, actions);
+        tbodyEl.appendChild(tr);
+      });
+    } catch (error) {
+      showError(emptyEl, error);
+      emptyEl.classList.remove('hidden');
+      tableWrapEl.classList.add('hidden');
     }
   }
 

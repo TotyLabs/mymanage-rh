@@ -407,11 +407,16 @@ class DigitalSignatureEngine:
                     )
 
                 # Phase 4 Fix: Sanitize PDF Metadata (Information Leakage Prevention)
+                document_title = (
+                    "Legajo de Personal"
+                    if ctx.get("doc_type") == "EMPLOYEE_LEGAJO"
+                    else "Recibo de Sueldo"
+                )
                 doc.set_metadata({
                     "producer": "MyManageRH Industrial Signature Engine",
                     "creator": "Dircom Payroll v4.3",
                     "author": "Organization ID " + organization_id,
-                    "title": f"Recibo de Sueldo - {receipt_id}"
+                    "title": f"{document_title} - {receipt_id}"
                 })
         except SignatureError:
             raise
@@ -525,7 +530,8 @@ class DigitalSignatureEngine:
                 signer_identity=signer_identity,
                 signature_level="X509+TSA+PKI",
                 doc_type=ctx.get("doc_type"),
-                source=ctx.get("source")
+                source=ctx.get("source"),
+                apply_to_all_pages=bool(ctx.get("apply_to_all_pages")),
             )
             
             # Store SealID in context for DB finalization

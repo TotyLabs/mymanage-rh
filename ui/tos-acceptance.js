@@ -2,8 +2,8 @@
  * TOS Acceptance State Management
  * Handles localStorage caching and backend persistence.
  */
-import { apiFetch, showToast } from './common.js?v=120';
-import { TOS_VERSION } from './constants.js?v=120';
+import { apiFetch, showToast } from './common.js?v=123';
+import { TOS_VERSION } from './constants.js?v=123';
 
 const STORAGE_KEY = 'tos_acceptance_v1';
 

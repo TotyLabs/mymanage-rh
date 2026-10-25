@@ -298,7 +298,8 @@ class SignatureEngine:
                                     signer_identity: Dict = None,
                                     signature_level: str = "X509",
                                     doc_type: str = None,
-                                    source: str = None) -> Dict:
+                                    source: str = None,
+                                    apply_to_all_pages: bool = False) -> Dict:
         
         # GAP-L2-01: Fail-fast resource limits (Large file protection)
         import config
@@ -442,6 +443,18 @@ class SignatureEngine:
                 
                 # Sign all detected positions (e.g. Original and Duplicado)
                 # Removed the [0] slice to support multi-copy receipts
+                if apply_to_all_pages and not positions and not is_v2:
+                    margin = 24
+                    sig_w = min(config.SIGNATURE_MAX_WIDTH, max(config.SIGNATURE_MIN_WIDTH, page.rect.width * 0.22))
+                    sig_h = config.SIGNATURE_HEIGHT
+                    positions = [{
+                        "bbox": (
+                            margin,
+                            page.rect.height - margin + 6.5,
+                            margin + sig_w,
+                            page.rect.height - margin + 6.5,
+                        )
+                    }]
                 
                 if page_num not in occupied_rects_by_page:
                     occupied_rects_by_page[page_num] = []
@@ -491,7 +504,7 @@ class SignatureEngine:
                 # 6. Sello de Validación Decoupled (Precision Overhaul - Phase 26)
                 # Sólo aplicamos el sello una vez por página.
                 # Explicit anchor_rect is only used for UNEMPLOYMENT override anchors.
-                if not seal_applied:
+                if not seal_applied or apply_to_all_pages:
                     anchor_rect = override_anchor_rect
 
                     if anchor_rect:
@@ -507,6 +520,7 @@ class SignatureEngine:
                             occupied_rects=occupied_rects_by_page.get(page_num, []),
                             place_on_anchor=place_seal_on_anchor,
                             doc_type=doc_type,
+                            allow_duplicate=apply_to_all_pages,
                         )
                         seal_applied = True
                     else:
@@ -522,6 +536,7 @@ class SignatureEngine:
                             doc=doc,
                             occupied_rects=occupied_rects_by_page.get(page_num, []),
                             doc_type=doc_type,
+                            allow_duplicate=apply_to_all_pages,
                         )
                         seal_applied = True
                 
@@ -620,7 +635,8 @@ class SignatureEngine:
                                signature_level="X509", role="employee",
                                signature_bytes=None, doc=None,
                                anchor_rect=None, occupied_rects=None,
-                               place_on_anchor=False, doc_type=None):
+                               place_on_anchor=False, doc_type=None,
+                               allow_duplicate=False):
         """
         Dibuja el sello de validación MyManageRH en la página siguiendo estándares industriales.
         Diseño: Badge horizontal [ QR ] FIRMA ELECTRÓNICA VERIFICADA + Info
@@ -630,7 +646,7 @@ class SignatureEngine:
         keywords = (doc.metadata.get("keywords", "") or "") if doc else ""
         
         # If no anchor_rect is provided, we use global deduplication for Header Fallback
-        if not anchor_rect and f"seal:{role}:" in keywords:
+        if not allow_duplicate and not anchor_rect and f"seal:{role}:" in keywords:
              logger.info(f"signature.seal_skip_header: {role} header seal already exists.")
              return
 
@@ -791,6 +807,8 @@ class SignatureEngine:
         document_label = (
             "Telegrama de Intimación"
             if normalized_doc_type in {"LABOR_MODEL", "TLG-INT-001"}
+            else "Legajo de Personal"
+            if normalized_doc_type == "EMPLOYEE_LEGAJO"
             else "Recibo de Haberes"
         )
         page.insert_text((fields_x, fields_y), f"Documento: {document_label}", fontsize=5.5, color=text_color)

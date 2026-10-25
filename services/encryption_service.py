@@ -4,6 +4,7 @@ Application-level envelope encryption for sensitive payroll files.
 The service is intentionally provider-neutral:
 - AWS KMS uses GenerateDataKey / Decrypt.
 - Google Cloud KMS wraps an application-generated data key.
+- Vault Transit wraps application-generated data keys.
 - Local KMS is only for development/testing and requires an explicit master key.
 
 No plaintext data key is persisted. File payloads are encrypted with AES-256-GCM
@@ -338,6 +339,137 @@ class GcpKmsProvider(KmsProvider):
         except Exception as exc:
             raise KmsError("gcp_kms_rewrap_data_key_failed") from exc
         return _b64(res.ciphertext)
+
+
+class VaultTransitProvider(KmsProvider):
+    """Vault Transit provider that wraps application-generated data keys."""
+
+    provider_name = "vault"
+
+    def __init__(
+        self,
+        vault_addr: str,
+        key_name: str,
+        *,
+        mount: str = "transit",
+        token: str = "",
+        token_file: str = "",
+        ca_cert: str = "",
+    ) -> None:
+        if not vault_addr:
+            raise KmsError("VAULT_ADDR is required for Vault Transit mode.")
+        if not key_name:
+            raise KmsError("APP_ENCRYPTION_KMS_KEY_ID is required for Vault Transit mode.")
+
+        address = vault_addr.rstrip("/")
+        if not address.startswith("https://"):
+            raise KmsError("VAULT_ADDR must use HTTPS.")
+        if not mount or any(part in {"", ".", ".."} for part in mount.strip("/").split("/")):
+            raise KmsError("VAULT_TRANSIT_MOUNT is invalid.")
+
+        if not token and token_file:
+            try:
+                token = Path(token_file).read_text(encoding="utf-8").strip()
+            except OSError as exc:
+                raise KmsError("VAULT_TOKEN_FILE could not be read.") from exc
+        if not token:
+            raise KmsError("VAULT_TOKEN or VAULT_TOKEN_FILE is required for Vault Transit mode.")
+
+        import requests
+
+        self._vault_addr = address
+        self._mount = mount.strip("/")
+        self._key_name = key_name.strip("/")
+        self._ca_cert = ca_cert or True
+        self._session = requests.Session()
+        self._session.headers.update({"X-Vault-Token": token})
+
+    def _transit_request(self, operation: str, key_name: str, payload: Dict[str, str]) -> Dict[str, Any]:
+        from urllib.parse import quote
+
+        mount_path = "/".join(quote(part, safe="") for part in self._mount.split("/"))
+        key_path = "/".join(quote(part, safe="") for part in key_name.strip("/").split("/"))
+        url = f"{self._vault_addr}/v1/{mount_path}/{operation}/{key_path}"
+        try:
+            response = self._session.post(
+                url,
+                json=payload,
+                timeout=10,
+                allow_redirects=False,
+                verify=self._ca_cert,
+            )
+        except Exception as exc:
+            import requests
+
+            if isinstance(exc, requests.RequestException):
+                raise KmsError(f"vault_transit_{operation}_request_failed") from exc
+            raise
+        if response.status_code < 200 or response.status_code >= 300:
+            raise KmsError(f"vault_transit_{operation}_failed:{response.status_code}")
+        try:
+            result = response.json()
+            data = result["data"]
+        except (ValueError, KeyError, TypeError) as exc:
+            raise KmsError(f"vault_transit_{operation}_invalid_response") from exc
+        if not isinstance(data, dict):
+            raise KmsError(f"vault_transit_{operation}_invalid_response")
+        return data
+
+    def generate_data_key(self, encryption_context: Dict[str, str]) -> GeneratedDataKey:
+        plaintext_key = bytearray(secrets.token_bytes(32))
+        try:
+            result = self._transit_request(
+                "encrypt",
+                self._key_name,
+                {"plaintext": _b64(bytes(plaintext_key))},
+            )
+            ciphertext = result["ciphertext"]
+            if not isinstance(ciphertext, str) or not ciphertext:
+                raise KmsError("vault_transit_encrypt_invalid_response")
+        except Exception:
+            _zeroize(plaintext_key)
+            raise
+        return GeneratedDataKey(
+            plaintext_key=plaintext_key,
+            encrypted_data_key=ciphertext,
+            kms_key_id=self._key_name,
+            provider=self.provider_name,
+        )
+
+    def decrypt_data_key(
+        self,
+        encrypted_data_key: str,
+        encryption_context: Dict[str, str],
+        kms_key_id: str,
+    ) -> bytearray:
+        result = self._transit_request(
+            "decrypt",
+            kms_key_id,
+            {"ciphertext": encrypted_data_key},
+        )
+        try:
+            plaintext = base64.b64decode(result["plaintext"], validate=True)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise KmsError("vault_transit_decrypt_invalid_response") from exc
+        if len(plaintext) != 32:
+            raise KmsError("vault_transit_invalid_data_key_length")
+        return bytearray(plaintext)
+
+    def rewrap_data_key(
+        self,
+        plaintext_key: bytearray,
+        encryption_context: Dict[str, str],
+        new_kms_key_id: str,
+    ) -> str:
+        result = self._transit_request(
+            "encrypt",
+            new_kms_key_id,
+            {"plaintext": _b64(bytes(plaintext_key))},
+        )
+        ciphertext = result.get("ciphertext")
+        if not isinstance(ciphertext, str) or not ciphertext:
+            raise KmsError("vault_transit_encrypt_invalid_response")
+        return ciphertext
 
 
 class EncryptionService:
@@ -831,6 +963,15 @@ def get_encryption_service() -> EncryptionService:
         provider = AwsKmsProvider(config.APP_ENCRYPTION_KMS_KEY_ID, config.APP_ENCRYPTION_AWS_REGION)
     elif provider_name == "gcp":
         provider = GcpKmsProvider(config.APP_ENCRYPTION_KMS_KEY_ID)
+    elif provider_name == "vault":
+        provider = VaultTransitProvider(
+            config.APP_ENCRYPTION_VAULT_ADDR,
+            config.APP_ENCRYPTION_KMS_KEY_ID,
+            mount=config.APP_ENCRYPTION_VAULT_MOUNT,
+            token=config.APP_ENCRYPTION_VAULT_TOKEN,
+            token_file=config.APP_ENCRYPTION_VAULT_TOKEN_FILE,
+            ca_cert=config.APP_ENCRYPTION_VAULT_CACERT,
+        )
     elif provider_name == "local":
         provider = LocalKmsProvider(
             config.APP_ENCRYPTION_LOCAL_MASTER_KEY,

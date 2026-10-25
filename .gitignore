@@ -7,6 +7,20 @@
 .env.*
 !.env.example
 
+# ---- CREDENTIAL FILES ----
+*service-account*.json
+*service_account*.json
+*credentials*.json
+credentials
+credentials.*
+*.token
+*_token
+secret_id
+role_id
+.vault-token
+.aws/
+.config/gcloud/
+
 *.pem
 *.key
 *.p12
@@ -25,6 +39,7 @@ __pycache__/
 
 venv/
 .venv/
+.venv*/
 env/
 
 .pytest_cache/

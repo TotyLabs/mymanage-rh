@@ -1697,6 +1697,17 @@ textarea.error:focus {
   flex: 0 0 auto;
 }
 
+.legajo-seal-position-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background-color: var(--warning-text);
+  box-shadow: 0 0 0 2px var(--warning-bg);
+}
+
 .empresa-employee-action-group .empresa-icon-btn.empresa-employee-action {
   width: 36px;
   min-width: 36px;
@@ -3259,4 +3270,3 @@ textarea.error:focus {
     background-position: -200% 0;
   }
 }
-

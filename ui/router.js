@@ -1,11 +1,11 @@
 /**
  * Router con separación de roles y protección de rutas.
  */
-import { getMe, logoutSession } from './common.js?v=120';
-import { tosAcceptance } from './tos-acceptance.js?v=120';
-import { ROUTES } from './constants.js?v=120';
+import { getMe, logoutSession } from './common.js?v=123';
+import { tosAcceptance } from './tos-acceptance.js?v=123';
+import { ROUTES } from './constants.js?v=123';
 
-const VERSION = '120'; // Refresh the updated employee record experience
+const VERSION = '123'; // Refresh the employee legajo seal indicator
 
 const loadPage = (page) => import(`./pages/${page}.js?v=${VERSION}`);
 
@@ -131,6 +131,10 @@ function isSignRoute(path) {
   return path.startsWith('#/sign/');
 }
 
+function isLegajoSigningRoute(path) {
+  return path.startsWith('#/empleado/legajo-firma/');
+}
+
 function isVerifyRoute(path) {
   return path.startsWith('#/verify/');
 }
@@ -171,6 +175,7 @@ function redirectToVerify(email) {
 
 async function resolveRoute(path) {
   if (isSignRoute(path)) return () => loadPage('sign');
+  if (isLegajoSigningRoute(path)) return () => loadPage('legajo-firma');
   if (isVerifyRoute(path)) return () => loadPage('verify');
   if (isVerifyAccountRoute(path)) return () => loadPage('verify-account');
   return routes[path] || getFallbackRoute();
