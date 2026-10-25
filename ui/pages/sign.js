@@ -379,11 +379,6 @@ export async function render(container, params) {
         body: { code }
       });
 
-      // Set the session cookie for subsequent authenticated requests
-      if (res.session_token) {
-        document.cookie = `session=${res.session_token}; path=/; max-age=900; SameSite=Lax`;
-      }
-
       otpVerified = true;
       showToast('Identidad verificada correctamente ✓', 'success');
 

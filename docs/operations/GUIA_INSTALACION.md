@@ -52,7 +52,7 @@ No usar valores reales en documentación. Usar `.env.example` o `.env.template` 
 | `X509_P12_PASSWORD` | Password P12. | Sí |
 | `ROOT_CA_PATH`, `X509_CRL_PATH` | Certificados públicos/CRL. | No si son públicos |
 | `TSA_URL` | Servicio de timestamp. | No |
-| `HSM_ENABLED`, `HSM_LIB_PATH`, `HSM_SLOT`, `HSM_PIN` | HSM/PKCS#11. | `HSM_PIN` sí |
+| `HSM_ENABLED`, `HSM_LIB_PATH`, `HSM_SLOT`, `HSM_PIN` | HSM/PKCS#11. SoftHSM solo en desarrollo/testing; HSM de hardware en producción. | `HSM_PIN` sí |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` | SMS OTP. | SID/token sí |
 
 ## 4. Dependencias
@@ -75,6 +75,8 @@ Dependencias relevantes:
 - `slowapi` para rate limiting.
 - `openpyxl`, `xlrd` para importaciones.
 - `qrcode` para sellos QR.
+
+SoftHSM es una dependencia del sistema, no de Python. Para desarrollo/testing, instalar SoftHSM en el entorno, inicializar un token con herramientas del paquete, y configurar `HSM_ENABLED=true`, `HSM_LIB_PATH`, `HSM_SLOT` y `HSM_PIN`. La clave privada del token debe corresponder al certificado usado por el signer. No reutilizar ni importar claves de producción. El arranque falla si la biblioteca PKCS#11 no está disponible.
 
 ## 5. Base de datos
 

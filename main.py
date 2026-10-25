@@ -7,7 +7,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import ipaddress
 from pathlib import Path
+from urllib.parse import urlsplit
 import asyncio
 from datetime import timedelta
 from fastapi import FastAPI, Depends, Request, HTTPException
@@ -104,6 +106,61 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Content-Security-Policy-Report-Only",
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com data:; "
+            "img-src 'self' data: blob:; connect-src 'self' https: http:; "
+            "object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+        )
+        return response
+
+
+def _normalized_origin(value: str):
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
+            return None
+        if parsed.username or parsed.password:
+            return None
+        port = parsed.port or (443 if parsed.scheme.lower() == "https" else 80)
+        return parsed.scheme.lower(), parsed.hostname.lower().rstrip("."), port
+    except ValueError:
+        return None
+
+
+def _is_allowed_request_source(value: str, allowed_base: str, production: bool) -> bool:
+    source = _normalized_origin(value)
+    if source is None:
+        return False
+
+    if allowed_base:
+        expected = _normalized_origin(allowed_base)
+        if expected is not None and source == expected:
+            return True
+
+    if production:
+        return False
+
+    scheme, hostname, _port = source
+    if hostname in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    try:
+        if ipaddress.ip_address(hostname).is_private:
+            return True
+    except ValueError:
+        pass
+    return scheme in {"http", "https"} and hostname.endswith(
+        (".ngrok-free.app", ".ngrok-free.dev")
+    )
+
+
 # =============================================================================
 # APP CONFIGURATION
 # =============================================================================
@@ -175,26 +232,23 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
                     referer = request.headers.get("Referer")
                     allowed_base = getattr(config, "SYSTEM_PUBLIC_URL", "")
                     
-                    if PRODUCTION:
-                        if origin and allowed_base and not origin.startswith(allowed_base):
-                            logger.warning("csrf.origin_blocked: got=%s expected=%s", origin, allowed_base)
-                            return JSONResponse(status_code=403, content={"detail": "csrf_protection_triggered"})
-                        if referer and allowed_base and not referer.startswith(allowed_base):
-                            logger.warning("csrf.referer_blocked: got=%s expected=%s", referer, allowed_base)
-                            return JSONResponse(status_code=403, content={"detail": "csrf_protection_triggered"})
-                    else:
-                        dev_allowed = ("localhost", "127.0.0.1", "192.168.", "10.", "172.", "ngrok-free.app", "ngrok-free.dev")
-                        if allowed_base:
-                            dev_allowed = dev_allowed + (allowed_base,)
-                        if origin and not any(x in origin for x in dev_allowed):
-                            logger.warning("csrf.origin_blocked_dev: got=%s", origin)
-                            return JSONResponse(status_code=403, content={"detail": "csrf_protection_triggered"})
-                        if referer and not any(x in referer for x in dev_allowed):
-                            logger.warning("csrf.referer_blocked_dev: got=%s", referer)
-                            return JSONResponse(status_code=403, content={"detail": "csrf_protection_triggered"})
+                    for source_name, source_value in (("origin", origin), ("referer", referer)):
+                        if source_value and not _is_allowed_request_source(
+                            source_value, allowed_base, PRODUCTION
+                        ):
+                            logger.warning(
+                                "csrf.%s_blocked: source=%s",
+                                source_name,
+                                _normalized_origin(source_value),
+                            )
+                            return JSONResponse(
+                                status_code=403,
+                                content={"detail": "csrf_protection_triggered"},
+                            )
         return await call_next(request)
 
 app.add_middleware(CSRFProtectionMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestIdMiddleware)
 app.add_middleware(FixJSMimeTypeMiddleware)
 app.add_middleware(DiagnosticLogoMiddleware)

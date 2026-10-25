@@ -32,6 +32,7 @@ La documentación está preparada para revisión por clientes enterprise, audito
 | `docs/01_ARQUITECTURA.md` | Describe arquitectura real basada en FastAPI, PostgreSQL, storage, firma digital, webhooks y multi-tenancy. |
 | `docs/03_API_REFERENCE.md` | Referencia de endpoints, autenticación, roles, errores, rate limits y ejemplos ficticios. |
 | `docs/05_SEGURIDAD_Y_FIRMAS.md` | Modelo de firma visual y criptográfica, X.509, PAdES-LTV, TSA/HSM/PKI, sellos QR, evidencia y limitaciones. |
+| `docs/INFORME_SEGURIDAD_BACKEND_FRONTEND.md` | Revisión estática de controles y riesgos del backend y frontend, con evidencia y prioridades de remediación. |
 | `docs/06_INTEGRIDAD_Y_AUDITORIA.md` | Principios de integridad, audit trail, evidencia, inmutabilidad, retención y reconstrucción del ciclo de vida. |
 | `docs/07_CACHE_AND_SCALABILITY_PLAN.md` | Plan de evolución para Redis, jobs, object storage y múltiples nodos. |
 | `docs/08_ESTIMACION_CAPACIDAD_PRODUCCION.md` | Estimación de capacidad de producción del sistema, límites actuales y recomendaciones. |

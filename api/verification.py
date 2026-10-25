@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, Backgr
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Literal, Optional
 
 from payroll_core import get_db, logger, audit, utc_now, limiter, safe_transaction
 from payroll_utils import get_real_ip
@@ -25,7 +25,7 @@ class SendOtpRequest(BaseModel):
     receipt_id: Optional[str] = None
     signature_token: Optional[str] = None
     channel: str = "sms"       # "sms" | "email"
-    context: str = "signature"  # "signature" | "login" | "password_reset"
+    context: Literal["signature", "login", "download"] = "signature"
 
 
 class VerifyOtpRequest(BaseModel):
@@ -33,6 +33,7 @@ class VerifyOtpRequest(BaseModel):
     code: str
     receipt_id: Optional[str] = None
     signature_token: Optional[str] = None
+    context: Literal["signature", "login", "download", "registration"] = "signature"
 
 
 class ResendOtpRequest(BaseModel):
@@ -129,7 +130,8 @@ async def verify_otp(
         success, reason = VerificationService.verify_code(
             db, body.email, body.code,
             receipt_id=body.receipt_id,
-            signature_token=body.signature_token
+            signature_token=body.signature_token,
+            context=body.context,
         )
 
         # Resolve organization_id for audit (Bimodal)

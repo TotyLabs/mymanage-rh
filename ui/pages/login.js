@@ -91,9 +91,7 @@ export async function render(container, params) {
           });
 
           if (res?.status === 'success' && res.user) {
-            if (res.session_token) {
-              localStorage.setItem('token', res.session_token);
-            }
+            localStorage.removeItem('token');
             // Guardar rol para enrutamiento (NO la clave)
             localStorage.setItem('userRole', res.user.role);
             localStorage.setItem('userId', res.user.id);
@@ -223,9 +221,7 @@ export async function render(container, params) {
           body: { username: email, password },
         });
 
-        if (response?.session_token) {
-          localStorage.setItem('token', response.session_token);
-        }
+        localStorage.removeItem('token');
 
         const user = response?.user || response;
 

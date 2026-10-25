@@ -35,7 +35,7 @@ En MyManageRH:
 - Si falta contexto PKI confiable, el flujo criptográfico debe fallar en lugar de simular una firma válida.
 - La metadata de resultado puede incluir `validation_status`, `ocsp_status`, `crl_status`, `tsa_timestamp`, `signature_algorithm`, `cert_serial` y `certificate_fingerprint`.
 
-Pendiente: definir política final de revocación y aceptación de fallos de TSA. Producción usa AWS KMS como root of trust, HSM/PKCS#11 como signer y TSA RFC 3161 vía `TSA_URL`.
+Pendiente: definir política final de revocación y aceptación de fallos de TSA. El snapshot de configuración local usa Vault Transit como proveedor de cifrado; el proveedor y el estado efectivo de producción deben confirmarse en el entorno desplegado. HSM/PKCS#11 y TSA RFC 3161 dependen de la configuración operativa.
 
 ## 5. X.509, TSA, HSM y PKI
 
@@ -44,7 +44,7 @@ Pendiente: definir política final de revocación y aceptación de fallos de TSA
 | Root CA | Certificado raíz publicado en `/pki/root_ca.crt` cuando aplica. |
 | CRL | Lista de revocación publicada en `/pki/root_ca.crl`. |
 | P12/PFX | Bundle local usado como signer si no se usa HSM. |
-| HSM/PKCS#11 | Modo opcional para firmar sin exponer clave privada en disco. |
+| HSM/PKCS#11 | Modo opcional para firmar sin exponer clave privada en disco. SoftHSM se limita a desarrollo y testing; producción requiere un HSM de hardware. |
 | TSA | Servicio RFC 3161 configurable mediante `TSA_URL`. |
 | PKI vault | `pki_vault.py` usa AES-256-GCM para llaves versionadas bajo master key. |
 | Fingerprint | Huella SHA-256 del certificado registrada como evidencia. |
@@ -53,6 +53,8 @@ Reglas operativas:
 
 - `X509_P12_PASSWORD` es obligatorio en producción si se usa P12.
 - Si `HSM_ENABLED=true`, `HSM_PIN` debe estar definido.
+- Para habilitar SoftHSM en desarrollo/testing, configurar `HSM_ENABLED=true`, `HSM_PIN`, `HSM_LIB_PATH` y `HSM_SLOT` para un token inicializado. La aplicación falla al iniciar si falta el PIN o la biblioteca PKCS#11.
+- SoftHSM no es un HSM físico y no debe usarse para proteger claves de producción. Usar una clave y certificado descartables en desarrollo/testing; no importar claves privadas de producción.
 - No se deben versionar llaves privadas, P12 reales ni contraseñas.
 - El certificado usado en ejemplos locales no debe reutilizarse para producción.
 
@@ -149,7 +151,7 @@ Recomendaciones adicionales: ejecutar procesamiento PDF en sandbox, validar exte
 | Cifrado de DNI | `file_processing/security.py` contiene placeholder; producción debe implementar cifrado real o storage cifrado. |
 | Jurisdicción | Validez legal bajo legislación argentina (Ley 25.506 / Ley 25.326). Revisada por asesoría legal. |
 | TSA | Proveedor RFC 3161 configurable vía `TSA_URL`. Política de fallback: fail-fast si firma criptográfica es requerida. |
-| HSM/KMS | Producción usa HSM/PKCS#11 como signer y AWS KMS como root of trust para cifrado. |
+| HSM/KMS | El proveedor de cifrado depende del ambiente. El snapshot local configura Vault Transit; no se confirma aquí la configuración efectiva de producción. |
 | RLS | Scripts disponibles; confirmar aplicación real en cada DB. |
 | Certificados locales | No usar certificados de desarrollo en producción. |
 | Firma visual | No sustituye por sí sola a firma criptográfica validable. |

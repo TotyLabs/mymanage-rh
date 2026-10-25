@@ -214,7 +214,7 @@ export async function render(container, params) {
     try {
       await apiFetch('/api/verification/verify', {
         method: 'POST',
-        body: { email, code }
+        body: { email, code, context: 'registration' }
       });
       
       // Clear router cache so it fetches fresh status

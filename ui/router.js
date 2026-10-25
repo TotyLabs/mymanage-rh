@@ -80,11 +80,8 @@ function renderNavbar(user, currentPath) {
 
 async function updateNotificationBadges() {
     try {
-        const token = localStorage.getItem('token');
-        if (!token) return;
-
         const res = await fetch('/api/notifications/unread-count', {
-            headers: { 'Authorization': `Bearer ${token}` }
+            credentials: 'include',
         });
         if (res.status === 401) return;
         

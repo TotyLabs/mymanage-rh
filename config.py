@@ -218,9 +218,12 @@ if not SECRET_KEY:
 # APPLICATION-LEVEL ENVELOPE ENCRYPTION
 # =============================================================================
 
-# Feature flag for sensitive file encryption. Production deployments that handle
-# real payroll data should set this to true after the migration is applied.
-APP_ENCRYPTION_ENABLED = os.getenv("APP_ENCRYPTION_ENABLED", "false").lower() == "true"
+# Encrypt new sensitive files by default in production. Existing files remain
+# readable through the metadata-aware download paths until explicitly migrated.
+APP_ENCRYPTION_ENABLED = os.getenv(
+    "APP_ENCRYPTION_ENABLED",
+    "true" if PRODUCTION else "false",
+).lower() == "true"
 
 # Provider options: aws, gcp, vault, local. Local is for development/testing only.
 APP_ENCRYPTION_PROVIDER = os.getenv("APP_ENCRYPTION_PROVIDER", "local").lower()
@@ -378,8 +381,12 @@ HSM_ENABLED = os.getenv("HSM_ENABLED", "false").lower() == "true"
 HSM_LIB_PATH = os.getenv("HSM_LIB_PATH", "/usr/lib/libsofthsm2.so")
 HSM_SLOT = int(os.getenv("HSM_SLOT", "0"))
 HSM_PIN = os.getenv("HSM_PIN", "")
+if PRODUCTION and HSM_ENABLED and "softhsm" in Path(HSM_LIB_PATH).name.lower():
+    raise RuntimeError("CRITICAL: SoftHSM is only allowed in development and testing.")
 if HSM_ENABLED and not HSM_PIN:
     raise RuntimeError("CRITICAL: HSM_PIN is required when HSM_ENABLED=true. Set it in .env.")
+if HSM_ENABLED and not Path(HSM_LIB_PATH).is_file():
+    raise RuntimeError(f"CRITICAL: PKCS#11 library not found: {HSM_LIB_PATH}")
 
 CERT_PATH = Path(X509_CERT_PATH)
 KEY_PATH = Path(X509_KEY_PATH)

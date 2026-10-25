@@ -8,13 +8,13 @@ No debe contener secretos reales, passwords, PINs, rutas privadas productivas ni
 
 ## 2. Estado actual y decisión requerida
 
-Estado documentado:
+Estado implementado o pendiente de evidencia por ambiente:
 
 - Firma X.509/PAdES-LTV soportada.
-- P12 en HSM/PKCS#11 para producción.
+- HSM/PKCS#11 disponible detrás de configuración; SoftHSM solo para desarrollo/testing.
 - PKI vault con AES-256-GCM.
-- Cifrado de archivos DNI/PII activo mediante EncryptionService.
-- Cifrado en reposo administrado por AWS S3 y AWS KMS.
+- Cifrado app-level de archivos disponible mediante EncryptionService.
+- El snapshot local configura Vault Transit y activa el cifrado de archivos; no constituye evidencia de que el entorno de producción o sus backups estén cifrados.
 
 Estado audit-ready actual:
 
@@ -22,9 +22,9 @@ Estado audit-ready actual:
 | --- | --- | --- |
 | Diseño de cifrado | Completo | Este documento y `docs/ARQUITECTURA_SEGURIDAD.md`. |
 | Implementación app-level de cifrado de archivos | `IMPLEMENTADO CON FEATURE FLAG` | `services/encryption_service.py`, migración `20260425_file_encryption_metadata`, tests unitarios y flujos de descarga temporal. |
-| Cifrado administrado por proveedor para DB/storage | `SI` | AWS S3 Default Encryption (SSE-KMS). |
-| Producción con cifrado efectivo de archivos sensibles | `SI` | APP_ENCRYPTION_ENABLED=true, AWS KMS configurado. |
-| Backups cifrados | `SI` | AWS Backup con cifrado KMS. |
+| Cifrado administrado por proveedor para DB/storage | `PENDIENTE DE EVIDENCIA` | Verificar configuración y pruebas de restore en el proveedor operativo. |
+| Producción con cifrado efectivo de archivos sensibles | `PENDIENTE DE VALIDACIÓN DESPLEGADA` | `APP_ENCRYPTION_ENABLED=true`, proveedor accesible, migración aplicada y pruebas de lectura/restore. |
+| Backups cifrados | `PENDIENTE DE EVIDENCIA` | Verificar configuración y pruebas de restore del sistema de backups operativo. |
 
 Declaración de límite: el cifrado app-level ya tiene implementación técnica, pero no debe declararse activo en producción hasta contar con evidencia de despliegue, configuración KMS, restore y monitoreo.
 
@@ -58,7 +58,7 @@ Decisión requerida antes de producción enterprise:
 | Decisión | Estado |
 | --- | --- |
 | Modelo de cifrado de storage | Envelope encryption app-level con AES-256-GCM y KMS como root of trust. |
-| Proveedor KMS/HSM | **AWS KMS** (Root of Trust). |
+| Proveedor KMS/HSM | Configurable por ambiente; el snapshot local indica Vault Transit. Validar la decisión y la configuración del entorno desplegado. |
 | Alcance de cifrado app-level | PDFs firmados, imágenes de firma, DNI, snapshots de identidad y comprobantes. |
 | Política de rotación | Anual o ante sospecha de compromiso. |
 | Responsable de custodia | Seguridad de Infraestructura (Cloud Admin). |
@@ -82,7 +82,7 @@ Estado:
 | --- | --- |
 | Diseño | Completo |
 | Implementación | Implementado detrás de `APP_ENCRYPTION_ENABLED` |
-| Producción | Requiere activación de `APP_ENCRYPTION_ENABLED=true` y configuración de AWS KMS |
+| Producción | La bandera queda activada por defecto; requiere proveedor KMS accesible, migración aplicada y validación de lectura/restore |
 | Rotación de llaves | Documentada como pendiente; no implementada automáticamente |
 
 Componentes:
@@ -92,7 +92,7 @@ Componentes:
 - Migración: `alembic/versions/20260425_file_encryption_metadata.py`.
 - Algoritmo de archivo: AES-256-GCM.
 - Data key: única por archivo.
-- Root of trust: KMS pProvider definido para producción: **AWS KMS**. El modo `local` es únicamente para desarrollo/testing. Ver `docs/CRYPTO_KEY_MANAGEMENT.md`.
+- Root of trust: proveedor KMS configurado para el ambiente. El modo `local` es únicamente para desarrollo/testing.
 
 Flujo implementado de cifrado:
 

@@ -1,4 +1,4 @@
-import { apiFetch, apiUrl, esc, getAuthToken, getMe, showError, showToast } from '../common.js';
+import { apiFetch, apiUrl, esc, getMe, showError, showToast } from '../common.js';
 
 function el(id, ctx = document) {
   return (ctx || document).querySelector(`#${id}`);
@@ -693,12 +693,10 @@ export async function render(container) {
     const model = state.models.find((item) => item.code === code);
     if (!model) return;
     try {
-      const token = getAuthToken();
       const response = await fetch(apiUrl(`/api/labor-models/catalog/${encodeURIComponent(code)}/download`), {
         credentials: 'include',
         headers: {
           'X-Requested-With': 'XMLHttpRequest',
-          ...(token ? { Authorization: `Bearer ${token}`, 'X-Session-Token': token } : {}),
         },
       });
       if (!response.ok) throw new Error('No se pudo descargar la plantilla base.');

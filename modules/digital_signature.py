@@ -18,6 +18,7 @@ Transacciones seguras mediante SQLAlchemy raw SQL (text).
 import os
 import json
 import hashlib
+import hmac
 import uuid
 import base64
 import asyncio
@@ -29,7 +30,7 @@ from typing import Dict, Any, List, Optional
 import time
 
 import fitz  # PyMuPDF
-from fastapi import APIRouter, Request, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, Request, Response, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import FileResponse, RedirectResponse
 try:
     from pydantic import BaseModel, Field, field_validator
@@ -1078,12 +1079,15 @@ async def sign_send_otp(
     # Generate OTP code
     from services.verification_service import VerificationService
     raw_code = VerificationService.generate_code()
-    code_hash = hash_token(raw_code)
+    code_hash = VerificationService._keyed_digest({
+        "context": "signature_frictionless",
+        "code": raw_code,
+    })
 
     import config as cfg
     expires_at = utc_now() + timedelta(minutes=cfg.OTP_EXPIRATION_MINUTES)
     context_hash = VerificationService.compute_context_hash(
-        str(data["receipt_id"]), token, raw_code
+        str(data["receipt_id"]), token, raw_code, "signature_frictionless"
     )
     destination_hash = VerificationService.compute_destination_hash(destination)
 
@@ -1097,11 +1101,16 @@ async def sign_send_otp(
     user_id_for_otp = str(user_row.id) if user_row else str(data["employee_id"])
 
     with safe_transaction(db):
-        # Invalidate old codes for this receipt
+        # Invalidate prior codes for this signature request.
         db.execute(text("""
             UPDATE verification_codes SET expires_at = :now
-            WHERE receipt_id = :rid AND verified = false AND created_at < :grace
-        """), {"now": utc_now(), "rid": str(data["receipt_id"]),
+            WHERE receipt_id = :rid
+              AND signature_token = :token
+              AND context = 'signature_frictionless'
+              AND verified = false
+              AND used_at IS NULL
+              AND created_at < :grace
+        """), {"now": utc_now(), "rid": str(data["receipt_id"]), "token": token,
                "grace": utc_now() - timedelta(seconds=30)})
 
         # Store the new OTP
@@ -1152,6 +1161,7 @@ async def sign_send_otp(
 @limiter.limit("5/minute")
 async def sign_verify_otp(
     request: Request,
+    response: Response,
     token: str,
     body: SignVerifyOtpBody,
     db: Session = Depends(get_db)
@@ -1168,48 +1178,82 @@ async def sign_verify_otp(
     receipt_id = str(data["receipt_id"])
 
     # Find the OTP code for this receipt
-    context_hash = None
     from services.verification_service import VerificationService
-    context_hash = VerificationService.compute_context_hash(receipt_id, token, clean_code)
+    context_hash = VerificationService.compute_context_hash(
+        receipt_id, token, clean_code, "signature_frictionless"
+    )
 
     otp_row = db.execute(text("""
         SELECT id, code_hash, context_hash, attempts, verified, channel, destination_hash
         FROM verification_codes
-        WHERE receipt_id = :rid AND verified = false AND expires_at > :now
+        WHERE receipt_id = :rid
+          AND signature_token = :token
+          AND context = 'signature_frictionless'
+          AND verified = false
+          AND used_at IS NULL
+          AND expires_at > :now
+          AND attempts < :max_attempts
         ORDER BY created_at DESC LIMIT 5
-    """), {"rid": receipt_id, "now": utc_now()}).fetchall()
+    """), {
+        "rid": receipt_id,
+        "token": token,
+        "now": utc_now(),
+        "max_attempts": config.OTP_MAX_ATTEMPTS,
+    }).fetchall()
 
     if not otp_row:
         raise HTTPException(400, "code_invalid_or_expired")
 
     matched = None
     for row in otp_row:
-        if row.context_hash == context_hash:
-            matched = row
-            break
-        # Flexible match: try with row's own signature_token
-        flex_hash = VerificationService.compute_context_hash(receipt_id, token, clean_code)
-        if row.context_hash == flex_hash:
+        if hmac.compare_digest(row.context_hash, context_hash):
             matched = row
             break
 
     if not matched:
-        # Increment attempts on the most recent code
-        db.execute(text("UPDATE verification_codes SET attempts = attempts + 1 WHERE id = :id"),
-                   {"id": otp_row[0].id})
-        db.commit()
-        raise HTTPException(400, "code_incorrect")
-
-    if matched.attempts >= 5:
-        raise HTTPException(400, "max_attempts_reached")
+        with safe_transaction(db):
+            failed_attempt = db.execute(text("""
+                UPDATE verification_codes
+                SET attempts = attempts + 1,
+                    expires_at = CASE
+                        WHEN attempts + 1 >= :max_attempts THEN :now
+                        ELSE expires_at
+                    END
+                WHERE id = :id
+                  AND verified = false
+                  AND used_at IS NULL
+                  AND expires_at > :now
+                  AND attempts < :max_attempts
+                RETURNING attempts
+            """), {
+                "id": otp_row[0].id,
+                "now": utc_now(),
+                "max_attempts": config.OTP_MAX_ATTEMPTS,
+            }).fetchone()
+        error = "max_attempts_reached" if (
+            failed_attempt and failed_attempt.attempts >= config.OTP_MAX_ATTEMPTS
+        ) else "code_incorrect"
+        raise HTTPException(400, error)
 
     # Mark as verified
     with safe_transaction(db):
-        db.execute(text("""
+        consumed = db.execute(text("""
             UPDATE verification_codes
             SET verified = true, verified_at = :now, used_at = :now
             WHERE id = :id
-        """), {"id": matched.id, "now": utc_now()})
+              AND context = 'signature_frictionless'
+              AND verified = false
+              AND used_at IS NULL
+              AND expires_at > :now
+              AND attempts < :max_attempts
+            RETURNING id
+        """), {
+            "id": matched.id,
+            "now": utc_now(),
+            "max_attempts": config.OTP_MAX_ATTEMPTS,
+        }).fetchone()
+        if not consumed:
+            raise HTTPException(400, "max_attempts_reached")
 
     # --- Create or find user and create a scoped session ---
     emp_email = data.get("employee_email")
@@ -1282,11 +1326,23 @@ async def sign_verify_otp(
     otp_dest_hash = matched.destination_hash or "unknown"
 
     logger.info(f"sign.otp_verified: employee={data['employee_id']} channel={otp_channel}")
+    is_secure = (
+        PRODUCTION
+        or request.url.scheme == "https"
+        or request.headers.get("x-forwarded-proto", "").lower() == "https"
+    )
+    response.set_cookie(
+        "session",
+        session_token,
+        httponly=True,
+        secure=is_secure,
+        samesite="strict",
+        max_age=900,
+    )
 
     return {
         "status": "ok",
         "verified": True,
-        "session_token": session_token,
         "expires_in_minutes": 15,
         "otp_channel": otp_channel,
         "otp_destination_hash": otp_dest_hash,

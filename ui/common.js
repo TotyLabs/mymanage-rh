@@ -2,17 +2,12 @@ function getApiBase() {
   return window.__API_BASE__ || '';
 }
 
-function getAuthToken() {
-  return window.localStorage.getItem('token') || '';
-}
-
-function getSessionToken() {
-  const storageToken = getAuthToken();
-  if (storageToken) return storageToken;
-
-  if (typeof document === 'undefined') return '';
-  const match = document.cookie.match(/(?:^|;\s*)session=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : '';
+if (typeof window !== 'undefined') {
+  try {
+    window.localStorage.removeItem('token');
+  } catch (error) {
+    console.warn('Unable to clear legacy browser session token.', error);
+  }
 }
 
 function apiUrl(path) {
@@ -112,13 +107,11 @@ function normalizeError(error, url = '') {
 async function apiFetch(path, options = {}) {
   const url = apiUrl(path);
 
-  const sessionToken = getSessionToken();
   const config = {
     credentials: 'include',
     headers: {
       'X-Requested-With': 'XMLHttpRequest',
       'ngrok-skip-browser-warning': 'true',
-      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}`, 'X-Session-Token': sessionToken } : {}),
       ...(options.headers || {}),
     },
     ...options,
@@ -237,13 +230,11 @@ async function getMe() {
 }
 
 async function logoutSession() {
-  const sessionToken = getSessionToken();
   const response = await fetch(apiUrl('/api/auth/logout'), {
     method: 'POST',
     credentials: 'include',
     headers: {
       'X-Requested-With': 'XMLHttpRequest',
-      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}`, 'X-Session-Token': sessionToken } : {}),
     },
   });
 
@@ -320,7 +311,6 @@ export {
   apiUrl,
   showError,
   getApiBase,
-  getAuthToken,
   showSuccess,
   withLoader,
   getMe,

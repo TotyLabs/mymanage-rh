@@ -76,7 +76,10 @@ export async function render(container, params) {
       try {
         const res = await apiFetch('/api/auth/forgot-password', {
           method: 'POST',
-          body: { email },
+          body: {
+            email,
+            purpose: isEmpresa ? 'company_key_reset' : 'password_reset',
+          },
         });
 
         showSuccess(

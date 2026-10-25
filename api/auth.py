@@ -208,7 +208,6 @@ async def login_empresa(
 
     return {
         "status": "success",
-        "session_token": token,
         "user": {
             "id": user_id,
             "role": user.role

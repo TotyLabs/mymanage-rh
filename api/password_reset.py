@@ -2,12 +2,13 @@
 Password Reset API — Forgot/Reset password endpoints.
 
 Security:
-- POST /forgot-password: Returns error if email not found. Rate-limited 3/min.
+- POST /forgot-password: Uses a generic response to avoid account enumeration.
+- OTPs are scoped to the requested recovery operation.
 - POST /reset-password: Validates token, updates password, purges sessions.
 - All events logged to audit_log.
 """
 
-from typing import Optional
+from typing import Literal, Optional
 from fastapi import APIRouter, Request, Depends, HTTPException
 from pydantic import BaseModel, Field, EmailStr
 from sqlalchemy.orm import Session
@@ -27,6 +28,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
+    purpose: Literal["password_reset", "company_key_reset"] = "password_reset"
 
 
 class ResetPasswordRequest(BaseModel):
@@ -53,27 +55,19 @@ async def forgot_password(
 ):
     """
     Initiates the password reset flow using OTP.
-    Returns error if the email is not registered.
+    Returns a generic response regardless of account existence.
     """
     ip = get_real_ip(request)
 
     try:
         from services.verification_service import VerificationService
         raw_code, status = VerificationService.create_code(
-            db, email=body.email, ip_address=ip, channel="email", context="password_reset"
+            db,
+            email=body.email,
+            ip_address=ip,
+            channel="email",
+            context=body.purpose,
         )
-
-        if status == "user_not_found":
-            raise HTTPException(
-                status_code=404,
-                detail="No se encontró una cuenta asociada a este correo electrónico."
-            )
-
-        if status.startswith("rate_limit"):
-            raise HTTPException(
-                status_code=429,
-                detail="Demasiados intentos. Esperá unos minutos antes de volver a intentar."
-            )
 
         if status == "ok" and raw_code:
             db.commit()  # IMPORTANT: Commit the new code to DB
@@ -131,7 +125,7 @@ async def reset_password(
     # 2. Verify OTP
     from services.verification_service import VerificationService
     is_valid, error_msg = VerificationService.verify_code(
-        db, email=body.email, code=body.otp
+        db, email=body.email, code=body.otp, context="password_reset"
     )
 
     if not is_valid:
@@ -190,7 +184,7 @@ async def reset_clave_empresa(
     # 1. Verify OTP
     from services.verification_service import VerificationService
     is_valid, error_msg = VerificationService.verify_code(
-        db, email=body.email, code=body.otp
+        db, email=body.email, code=body.otp, context="company_key_reset"
     )
 
     if not is_valid:

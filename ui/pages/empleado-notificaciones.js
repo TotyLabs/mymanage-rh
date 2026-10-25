@@ -74,7 +74,6 @@ export async function render(container) {
             const res = await fetch('/api/notifications', {
                 method: 'POST',
                 headers: { 
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
                     'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: formData
