@@ -444,14 +444,15 @@ class EmailService:
 
     async def send_password_reset_otp_email(self, to: str, code: str):
         ttl = getattr(config, "OTP_EXPIRATION_MINUTES", 10)
-        subject = f"Código para restablecer contraseña — {config.SYSTEM_NAME}"
+        brand_name = "MyManageRH"
+        subject = f"Código para restablecer contraseña — {brand_name}"
 
         body_html = f"""
         <html>
         <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="text-align: center; margin-bottom: 24px;">
                 <h2 style="color: #1d4ed8; margin: 0;">Restablecer contraseña</h2>
-                <p style="color: #666; font-size: 14px;">{config.SYSTEM_NAME}</p>
+                <p style="color: #666; font-size: 14px;">{brand_name}</p>
             </div>
 
             <p>Hola,</p>
@@ -474,7 +475,7 @@ class EmailService:
 
             <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 24px 0;">
             <p style="font-size: 12px; color: #94a3b8; text-align: center;">
-                Sistema: <strong>{config.SYSTEM_NAME}</strong>
+                Sistema: <strong>{brand_name}</strong>
             </p>
         </body>
         </html>
