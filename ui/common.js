@@ -169,6 +169,7 @@ function showError(targetEl, error) {
 
   const wrapper = document.createElement('div');
   wrapper.className = 'error';
+  wrapper.setAttribute('role', 'alert');
 
   const message = document.createElement('div');
   message.textContent = buildMessageFromError(error);
@@ -190,6 +191,7 @@ function showSuccess(targetEl, message) {
 
   const wrapper = document.createElement('div');
   wrapper.className = 'success';
+  wrapper.setAttribute('role', 'status');
   wrapper.innerText = message;
 
   targetEl.innerHTML = '';
@@ -246,27 +248,98 @@ async function logoutSession() {
   window.__USER_CACHE__ = null;
 }
 
+/* ==========================================================================
+   Avisos (toasts)
+   - Un solo contenedor (#toasts, aria-live) para todo el producto.
+   - Los errores se anuncian como alerta, quedan más tiempo en pantalla y se
+     pueden cerrar; el temporizador se pausa con el mouse o el foco encima.
+   - Los errores de formulario NO dependen solo de este aviso: se muestran
+     también junto al campo (ver .form-error-msg).
+   ========================================================================== */
+
+const TOAST_ICONS = {
+  success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 12.5l2.7 2.7L16 9.8"></path></svg>',
+  error: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>',
+  warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l9.5 16.5h-19z"></path><path d="M12 10v4.5"></path><path d="M12 17.5h.01"></path></svg>',
+  info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5.5"></path><path d="M12 7.5h.01"></path></svg>',
+  close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg>',
+};
+
+const MAX_VISIBLE_TOASTS = 4;
+
 function showToast(message, type = 'info', timeout = 4000) {
   try {
     const container = document.getElementById('toasts');
     if (!container) return;
 
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.innerText = message;
+    const kind = TOAST_ICONS[type] && type !== 'close' ? type : 'info';
+    const isError = kind === 'error';
+    // Los errores se quedan al menos 8 s: hay que poder leerlos.
+    const duration = isError ? Math.max(timeout, 8000) : timeout;
 
+    const toast = document.createElement('div');
+    toast.className = `toast ${kind}`;
+    toast.setAttribute('role', isError ? 'alert' : 'status');
+
+    const icon = document.createElement('span');
+    icon.className = 'toast-icon';
+    icon.innerHTML = TOAST_ICONS[kind];
+
+    const text = document.createElement('span');
+    text.className = 'toast-msg';
+    text.textContent = String(message ?? '');
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'toast-close';
+    close.setAttribute('aria-label', 'Cerrar aviso');
+    close.innerHTML = TOAST_ICONS.close;
+
+    toast.append(icon, text, close);
+
+    // Evita pilas interminables: se descartan los más viejos.
+    while (container.children.length >= MAX_VISIBLE_TOASTS) {
+      container.firstElementChild.remove();
+    }
     container.appendChild(toast);
 
-    setTimeout(() => {
+    let timer = null;
+    let removed = false;
+
+    const dismiss = () => {
+      if (removed) return;
+      removed = true;
+      clearTimeout(timer);
       toast.classList.add('fade-out');
-      setTimeout(() => toast.remove(), 300);
-    }, timeout);
+      setTimeout(() => toast.remove(), 200);
+    };
+    const start = () => {
+      clearTimeout(timer);
+      timer = setTimeout(dismiss, duration);
+    };
+    const pause = () => clearTimeout(timer);
+
+    close.addEventListener('click', dismiss);
+    toast.addEventListener('mouseenter', pause);
+    toast.addEventListener('mouseleave', start);
+    toast.addEventListener('focusin', pause);
+    toast.addEventListener('focusout', start);
+
+    start();
   } catch (error) {
-    console.error('Error al mostrar toast:', error);
+    console.error('Error al mostrar aviso:', error);
   }
 }
 
-function confirmAction(message) {
+/* ==========================================================================
+   Diálogo de confirmación (#confirmModal, definido en layout.js)
+   Compatible con la firma anterior: confirmAction(message).
+   Opciones: { title, confirmLabel, cancelLabel, danger }
+   Maneja foco (inicial en "Cancelar", atrapado dentro del diálogo y devuelto
+   al disparador), Escape y clic sobre el fondo.
+   ========================================================================== */
+
+function confirmAction(message, options = {}) {
   return new Promise((resolve) => {
     const modal = document.getElementById('confirmModal');
 
@@ -275,17 +348,35 @@ function confirmAction(message) {
       return;
     }
 
+    const titleEl = modal.querySelector('#confirmTitle');
     const msgEl = modal.querySelector('#confirmMsg');
     const okBtn = modal.querySelector('#confirmOk');
     const cancelBtn = modal.querySelector('#confirmCancel');
+    const previouslyFocused = document.activeElement;
 
-    msgEl.innerText = message || '¿Confirmar?';
+    if (titleEl) titleEl.textContent = options.title || 'Confirmar acción';
+    msgEl.textContent = message || '¿Confirmar?';
+    okBtn.textContent = options.confirmLabel || 'Confirmar';
+    cancelBtn.textContent = options.cancelLabel || 'Cancelar';
+    okBtn.classList.toggle('btn-danger', Boolean(options.danger));
+    okBtn.classList.toggle('btn-primary', !options.danger);
+
     modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    cancelBtn.focus();
 
     function cleanup(result) {
       modal.classList.add('hidden');
+      modal.setAttribute('aria-hidden', 'true');
+      document.body.classList.remove('modal-open');
       okBtn.removeEventListener('click', onOk);
       cancelBtn.removeEventListener('click', onCancel);
+      modal.removeEventListener('keydown', onKey);
+      modal.removeEventListener('mousedown', onBackdrop);
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+        previouslyFocused.focus({ preventScroll: true });
+      }
       resolve(result);
     }
 
@@ -297,8 +388,33 @@ function confirmAction(message) {
       cleanup(false);
     }
 
+    function onKey(event) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        cleanup(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      // Foco atrapado entre los dos botones del diálogo.
+      const first = cancelBtn;
+      const last = okBtn;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    function onBackdrop(event) {
+      if (event.target === modal) cleanup(false);
+    }
+
     okBtn.addEventListener('click', onOk);
     cancelBtn.addEventListener('click', onCancel);
+    modal.addEventListener('keydown', onKey);
+    modal.addEventListener('mousedown', onBackdrop);
   });
 }
 
