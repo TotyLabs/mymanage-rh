@@ -1,5 +1,5 @@
-import { renderLayout, bindHeader } from './layout.js?v=123';
-import { initRouter } from './router.js?v=123';
+import { renderLayout, bindHeader } from './layout.js?v=124';
+import { initRouter } from './router.js?v=126';
 
 document.addEventListener('DOMContentLoaded', () => {
   const app = document.getElementById('app');

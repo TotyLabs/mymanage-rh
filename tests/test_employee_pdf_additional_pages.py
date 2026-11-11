@@ -148,16 +148,36 @@ def test_legajo_uses_section_locality_when_company_provides_a_distinct_value():
     assert "Villa Celina" in pdf[3].get_text()
 
 
-def test_domicile_declaration_draws_original_street_sketch_instead_of_empty_box():
+def test_legajo_has_one_signature_seal_field_per_page():
+    pdf = make_employee_pdf()
+
+    assert len(pdf) == 6
+    assert all(page.get_text().count("{{legajo.sello_firma}}") == 1 for page in pdf)
+
+
+def test_domicile_declaration_draws_nine_square_blocks_lot_and_north_arrow():
     from services.employee_legajo_template import EmployeeLegajoTemplate
 
     canvas = MagicMock()
     EmployeeLegajoTemplate._domicile_sketch(canvas, 190, 232, 232, 150)
 
-    assert canvas.line.call_count == 20
-    assert canvas.rect.call_count == 0
-    canvas.line.assert_any_call(238.72, 548.0, 257.28, 548.0)
-    canvas.line.assert_any_call(257.28, 522.5, 389.52, 522.5)
+    blocks = [call for call in canvas.rect.call_args_list if call.kwargs == {"stroke": 1, "fill": 0}]
+    lots = [call for call in canvas.rect.call_args_list if call.kwargs == {"stroke": 1, "fill": 1}]
+
+    assert len(blocks) == 9
+    assert all(call.args[2] == call.args[3] for call in blocks)
+    assert len(lots) == 1
+    assert canvas.line.call_count == 3
+    assert canvas.circle.call_count == 2
+    shaft = canvas.line.call_args_list[0].args
+    left_arrowhead = canvas.line.call_args_list[1].args
+    right_arrowhead = canvas.line.call_args_list[2].args
+    assert shaft[0] == shaft[2]
+    assert shaft[3] > shaft[1]
+    assert left_arrowhead[0] == right_arrowhead[0] == shaft[0]
+    assert left_arrowhead[2] < shaft[0] < right_arrowhead[2]
+    canvas.drawCentredString.assert_called_once()
+    assert canvas.drawCentredString.call_args.args[2] == "N"
 
 
 def test_legajo_checks_dni_for_common_document_type_variants(monkeypatch):

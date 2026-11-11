@@ -144,35 +144,66 @@ class EmployeeLegajoTemplate:
             )
 
         pdf.saveState()
-        pdf.setStrokeColorRGB(0.35, 0.35, 0.35)
-        pdf.setLineWidth(0.8)
+        try:
+            pdf.setStrokeColorRGB(0, 0, 0)
+            pdf.setLineWidth(0.9)
+            block_size = min(height * 0.24, width * 0.16)
+            street_width = block_size * 0.28
+            grid_height = block_size * 3 + street_width * 2
+            grid_top = (height - grid_height) / 2
+            grid_width = block_size * 3 + street_width * 2
+            grid_left = (width - grid_width) / 2
 
-        # Central block and the interrupted outlines of the surrounding blocks form the map.
-        for segment in (
-            (0.21, 0.08, 0.29, 0.08),
-            (0.29, 0.08, 0.29, 0.22),
-            (0.39, 0.08, 0.86, 0.08),
-            (0.86, 0.08, 0.86, 0.22),
-            (0.21, 0.92, 0.29, 0.92),
-            (0.29, 0.78, 0.29, 0.92),
-            (0.39, 0.92, 0.86, 0.92),
-            (0.86, 0.78, 0.86, 0.92),
-            (0.08, 0.14, 0.08, 0.22),
-            (0.08, 0.22, 0.19, 0.22),
-            (0.08, 0.35, 0.08, 0.78),
-            (0.08, 0.78, 0.19, 0.78),
-            (0.92, 0.14, 0.92, 0.22),
-            (0.81, 0.22, 0.92, 0.22),
-            (0.92, 0.35, 0.92, 0.78),
-            (0.81, 0.78, 0.92, 0.78),
-            (0.29, 0.25, 0.86, 0.25),
-            (0.29, 0.25, 0.29, 0.75),
-            (0.86, 0.25, 0.86, 0.75),
-            (0.29, 0.75, 0.86, 0.75),
-        ):
-            line(*segment)
+            for row in range(3):
+                for column in range(3):
+                    block_x = grid_left + column * (block_size + street_width)
+                    block_top = grid_top + row * (block_size + street_width)
+                    pdf.rect(
+                        x + block_x,
+                        PAGE_HEIGHT - top - block_top - block_size,
+                        block_size,
+                        block_size,
+                        stroke=1,
+                        fill=0,
+                    )
 
-        pdf.restoreState()
+            lot_width = block_size * 0.52
+            lot_height = block_size * 0.3
+            center_x = grid_left + block_size + street_width + block_size / 2
+            center_top = grid_top + block_size + street_width + block_size / 2
+            lot_x = center_x - lot_width / 2
+            lot_top = center_top - lot_height / 2
+            pdf.setFillColorRGB(0.35, 0.35, 0.35)
+            pdf.rect(
+                x + lot_x,
+                PAGE_HEIGHT - top - lot_top - lot_height,
+                lot_width,
+                lot_height,
+                stroke=1,
+                fill=1,
+            )
+
+            marker_x = x + center_x
+            marker_y = PAGE_HEIGHT - top - center_top
+            pdf.setFillColorRGB(0, 0, 0)
+            pdf.circle(marker_x, marker_y, 2.4, stroke=1, fill=1)
+            pdf.setFillColorRGB(1, 1, 1)
+            pdf.circle(marker_x, marker_y, 0.9, stroke=0, fill=1)
+
+            compass_x = 0.89
+            pdf.setLineWidth(1.2)
+            line(compass_x, 0.31, compass_x, 0.12)
+            line(compass_x, 0.12, compass_x - 0.035, 0.2)
+            line(compass_x, 0.12, compass_x + 0.035, 0.2)
+            pdf.setFillColorRGB(0, 0, 0)
+            pdf.setFont("Helvetica-Bold", 8)
+            pdf.drawCentredString(
+                x + compass_x * width,
+                PAGE_HEIGHT - top - height * 0.04,
+                "N",
+            )
+        finally:
+            pdf.restoreState()
 
     def _background(self, pdf, page_number):
         raw = _template_backgrounds().get(page_number)
@@ -251,10 +282,20 @@ class EmployeeLegajoTemplate:
             pdf.line(x + 3.3, PAGE_HEIGHT - top - 6.5, x + 7, PAGE_HEIGHT - top - 1.5)
         self._draw_text(pdf, x + box + 4, top - 1, label, size)
 
-    def _signature(self, pdf, x, top, width, label):
+    def _signature(self, pdf, x, top, width, label, seal_anchor=False):
         pdf.setLineWidth(0.7)
         pdf.line(x, PAGE_HEIGHT - top, x + width, PAGE_HEIGHT - top)
         self._draw_text(pdf, x, top + 4, label, 9, bold=True)
+        if seal_anchor:
+            pdf.saveState()
+            pdf.setFillColorRGB(1, 1, 1)
+            pdf.setFont("Helvetica", 1)
+            pdf.drawCentredString(
+                x + width / 2,
+                PAGE_HEIGHT - top + 27.5,
+                "{{legajo.sello_firma}}",
+            )
+            pdf.restoreState()
 
     def _page_one(self, pdf):
         self._background(pdf, 1)
@@ -336,7 +377,7 @@ class EmployeeLegajoTemplate:
             "Dejo constancia que los datos que figuran en la presente son correctos, comprometiéndome a comunicar cualquier modificación. Declaro bajo juramento no ser beneficiario de jubilación, pensión, retiro o prestación no contributiva. Asimismo me comprometo a presentar la Libreta de Aportes Patronales al Fondo de Desempleo o proporcionar los datos necesarios para su inscripción.",
             width=CONTENT_WIDTH - 26, size=6.5, leading=8,
         )
-        self._signature(pdf, 352, 718, 215, "Firma Trabajador/a")
+        self._signature(pdf, 352, 718, 215, "Firma Trabajador/a", seal_anchor=True)
         pdf.setLineWidth(0.6)
         pdf.rect(476, PAGE_HEIGHT - 27 - 64, 110, 64, fill=0, stroke=1)
         pdf.showPage()
@@ -360,7 +401,7 @@ class EmployeeLegajoTemplate:
             "Me responsabilizo de la exactitud de los datos arriba mencionados, me comprometo a desempeñar con eficiencia mis tareas y a cumplir los reglamentos en vigencia, así como también a entregar la documentación requerida por la empresa en un plazo no mayor de sesenta (60) días.",
             width=CONTENT_WIDTH, size=9, leading=13,
         )
-        self._signature(pdf, 205, 660, 205, "Firma del Trabajador/a")
+        self._signature(pdf, 205, 660, 205, "Firma del Trabajador/a", seal_anchor=True)
         pdf.showPage()
 
     def _domicile_page(self, pdf):
@@ -382,7 +423,7 @@ class EmployeeLegajoTemplate:
             "DECLARO QUE EL DOMICILIO CONSIGNADO ES CORRECTO Y QUE SE DEBERÁ TOMAR COMO VÁLIDO PARA TODOS LOS EFECTOS LEGALES, COMPROMETIÉNDOME A INFORMAR CUALQUIER CAMBIO FUTURO QUE SE PRODUZCA SOBRE EL MISMO.",
             width=CONTENT_WIDTH, size=10, leading=14,
         )
-        self._signature(pdf, 42, 575, 280, "Firma del Trabajador:")
+        self._signature(pdf, 42, 575, 280, "Firma del Trabajador:", seal_anchor=True)
         self._signature(pdf, 42, 620, 280, "Aclaración:")
         self._signature(pdf, 42, 665, 280, "D.N.I.:")
         pdf.showPage()
@@ -399,7 +440,7 @@ class EmployeeLegajoTemplate:
         next_top = self._paragraph(pdf, 42, next_top + 18, "Declaro bajo juramento que las cargas de familia detalladas en el presente legajo residen en:", size=9, leading=12)
         self._field(pdf, 42, next_top + 8, "", self.data.get("family_residence"), CONTENT_WIDTH, size=10)
         self._draw_text(pdf, 42, 385, "Quedando usted informado.", 10, bold=True)
-        self._signature(pdf, 42, 620, 280, "Firma del Trabajador:")
+        self._signature(pdf, 42, 620, 280, "Firma del Trabajador:", seal_anchor=True)
         self._signature(pdf, 42, 650, 280, "Aclaración:")
         self._signature(pdf, 42, 680, 280, "D.N.I.:")
         pdf.showPage()
@@ -420,7 +461,7 @@ class EmployeeLegajoTemplate:
         self._field(pdf, 42, 314, "Vencimiento de la entrega:", self._date(self.clothing.get("vencimiento")), 340, bold=True)
         self._field(pdf, 42, 342, "Próximo vencimiento:", self._date(self.clothing.get("proximo_vencimiento")), 340, bold=True)
         self._draw_text(pdf, 42, 383, "Asimismo se deja constancia que el trabajador se compromete a usar los elementos recibidos.", 9)
-        self._signature(pdf, 42, 440, 285, "Firma del Trabajador:")
+        self._signature(pdf, 42, 440, 285, "Firma del Trabajador:", seal_anchor=True)
         self._signature(pdf, 42, 468, 285, "Aclaración:")
         self._signature(pdf, 42, 496, 285, "Obra:")
         pdf.showPage()
@@ -439,7 +480,7 @@ class EmployeeLegajoTemplate:
             "Declaro recibir la libreta de Aportes Patronales con sus aportes y demás haberes correspondientes al día, dejando constancia que no se me adeuda importe alguno bajo ningún concepto.",
             width=CONTENT_WIDTH, size=10, leading=15,
         )
-        self._signature(pdf, 42, 430, 300, "Firma del Trabajador:")
+        self._signature(pdf, 42, 430, 300, "Firma del Trabajador:", seal_anchor=True)
         self._signature(pdf, 42, 472, 300, "Aclaración:")
         self._signature(pdf, 42, 514, 300, "D.N.I.:")
         pdf.showPage()
@@ -462,7 +503,7 @@ class EmployeeLegajoTemplate:
         self._draw_text(pdf, 77, 244, "/", 10, bold=True)
         self._checkbox(pdf, 92, 244, "NO", checked=authorization in ("no", "false", "0"), size=10)
         self._draw_text(pdf, 124, 244, "encontrarme afiliado al mismo.", 10)
-        self._signature(pdf, 42, 405, 300, "Firma del Trabajador:")
+        self._signature(pdf, 42, 405, 300, "Firma del Trabajador:", seal_anchor=True)
         self._signature(pdf, 42, 448, 300, "Aclaración:")
         self._signature(pdf, 42, 491, 300, "D.N.I.:")
         pdf.showPage()
@@ -481,7 +522,7 @@ class EmployeeLegajoTemplate:
         self._signature(pdf, 42, 418, 300, "Aclaración:")
         self._signature(pdf, 42, 461, 300, "D.N.I.:")
         self._draw_text(pdf, 42, 510, "Me notifico del despido precedente acusando recibo de la misma", 10)
-        self._signature(pdf, 42, 583, 300, "Firma del Trabajador:")
+        self._signature(pdf, 42, 583, 300, "Firma del Trabajador:", seal_anchor=True)
         self._signature(pdf, 42, 626, 300, "Aclaración:")
         self._signature(pdf, 42, 669, 300, "D.N.I.:")
         pdf.showPage()

@@ -5,7 +5,7 @@ import { getMe, logoutSession } from './common.js?v=123';
 import { tosAcceptance } from './tos-acceptance.js?v=123';
 import { ROUTES } from './constants.js?v=123';
 
-const VERSION = '123'; // Refresh the employee legajo seal indicator
+const VERSION = '126'; // Refresh the employee legajo signing flow
 
 const loadPage = (page) => import(`./pages/${page}.js?v=${VERSION}`);
 

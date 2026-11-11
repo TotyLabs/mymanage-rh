@@ -269,12 +269,10 @@ export async function render(container) {
         const viewButton = document.createElement('button');
         viewButton.type = 'button';
         viewButton.className = 'btn btn-ghost btn-sm';
-        viewButton.textContent = 'Ver PDF';
-        viewButton.onclick = () => window.open(
-          `${getApiBase()}/api/employee-legajos/pending/${encodeURIComponent(legajo.id)}/pdf`,
-          '_blank',
-          'noopener',
-        );
+        viewButton.textContent = 'Abrir';
+        viewButton.onclick = () => {
+          location.hash = `#/empleado/legajo-firma/${encodeURIComponent(legajo.id)}`;
+        };
         const signButton = document.createElement('button');
         signButton.type = 'button';
         signButton.className = 'btn btn-primary btn-sm';

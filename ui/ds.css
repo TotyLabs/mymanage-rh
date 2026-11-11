@@ -272,6 +272,24 @@ body.modal-open { overflow: hidden; }
   font-size: var(--text-caption);
 }
 
+.nav-context-label { min-width: 0; }
+.nav-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 6px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--slate-600);
+  cursor: pointer;
+}
+.nav-collapse-btn:hover { background: var(--slate-100); color: var(--ink); }
+.nav-collapse-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.nav-collapse-btn svg { width: 18px; height: 18px; }
 .nav-more-btn { display: none; }
 .nav-more-btn[aria-expanded="true"] { background: var(--slate-100); color: var(--ink); }
 
@@ -286,6 +304,8 @@ body.modal-open { overflow: hidden; }
 
 /* Escritorio: barra lateral */
 @media (min-width: 1024px) {
+  .layout[data-shell="app"][data-sidebar-collapsed="true"] { --sidebar-w: 72px; }
+
   .layout[data-shell="app"] .app-nav {
     top: var(--nav-height);
     left: 0;
@@ -297,9 +317,34 @@ body.modal-open { overflow: hidden; }
     overflow-y: auto;
     border-right: 1px solid var(--line);
   }
+  .nav-context { display: flex; align-items: center; justify-content: space-between; }
   .nav-more-sheet { display: contents; }
   .nav-divider { height: 1px; margin: 8px 12px; background: var(--line); }
   .app-link--logout { margin-top: auto; color: var(--slate-600); }
+
+  .layout[data-shell="app"][data-sidebar-collapsed="true"] .nav-context {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .layout[data-shell="app"][data-sidebar-collapsed="true"] .nav-context-label,
+  .layout[data-shell="app"][data-sidebar-collapsed="true"] .app-link .link-label {
+    display: none;
+  }
+  .layout[data-shell="app"][data-sidebar-collapsed="true"] .nav-collapse-btn svg {
+    transform: rotate(180deg);
+  }
+  .layout[data-shell="app"][data-sidebar-collapsed="true"] .app-link {
+    justify-content: center;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+  .layout[data-shell="app"][data-sidebar-collapsed="true"] .app-link .notification-badge {
+    position: absolute;
+    top: 2px;
+    right: 3px;
+    margin: 0;
+  }
 
   .layout[data-shell="app"] > .page {
     /* .container trae width:100%; con el margen de la barra lateral se desbordaba */
@@ -341,7 +386,7 @@ body.modal-open { overflow: hidden; }
     text-align: center;
   }
   .nav-more-btn { display: flex; }
-  .nav-context, .nav-divider { display: none; }
+  .nav-context, .nav-divider, .nav-collapse-btn { display: none; }
 
   .layout[data-shell="app"] .app-nav > .app-link .notification-badge {
     position: absolute;

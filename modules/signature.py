@@ -390,6 +390,7 @@ class SignatureEngine:
                     raise SignatureError("PDF processing timeout")
                 
                 page = doc.load_page(page_num)
+                normalized_doc_type = str(doc_type or "").upper()
                 
                 # Pre-verificación de texto (Scanned PDF Check)
                 if not page.get_text("text").strip():
@@ -399,7 +400,6 @@ class SignatureEngine:
                 override_anchor_rect = None
                 place_seal_on_anchor = False
                 try:
-                    normalized_doc_type = str(doc_type or "").upper()
                     if normalized_doc_type in {"LABOR_MODEL", "TLG-INT-001"}:
                         anchor_text = "{{empresa.campo_firma_sello}}"
                         anchor_rects = page.search_for(anchor_text)
@@ -421,6 +421,56 @@ class SignatureEngine:
                                     break
                             if not override_anchor_rect:
                                 raise SignatureError("labor_model_seal_anchor_missing")
+                    elif normalized_doc_type == "EMPLOYEE_LEGAJO":
+                        anchor_rects = page.search_for("{{legajo.sello_firma}}")
+                        if not anchor_rects:
+                            legacy_labels = (
+                                page.search_for("Firma Trabajador/a")
+                                or page.search_for("Firma del Trabajador/a")
+                                or page.search_for("Firma del Trabajador:")
+                            )
+                            legacy_line = None
+                            if legacy_labels:
+                                label_rect = fitz.Rect(legacy_labels[0])
+                                candidate_lines = [
+                                    item
+                                    for drawing in page.get_drawings()
+                                    for item in drawing["items"]
+                                    if item[0] == "l"
+                                    and abs(item[1].y - item[2].y) < 0.1
+                                    and item[1].x <= label_rect.x0
+                                    and item[2].x >= label_rect.x1
+                                    and 0 < label_rect.y0 - item[1].y < 10
+                                ]
+                                if candidate_lines:
+                                    legacy_line = min(
+                                        candidate_lines,
+                                        key=lambda item: label_rect.y0 - item[1].y,
+                                    )
+                            if not legacy_line:
+                                raise SignatureError("employee_legajo_seal_anchor_missing")
+                            center_x = (legacy_line[1].x + legacy_line[2].x) / 2
+                            center_y = legacy_line[1].y - config.SIGNATURE_SEAL_HEIGHT / 2 - 5
+                            override_anchor_rect = fitz.Rect(
+                                center_x - 0.5,
+                                center_y - 0.5,
+                                center_x + 0.5,
+                                center_y + 0.5,
+                            )
+                            logger.info(
+                                "signature.seal_position: legacy employee signature line detected "
+                                f"page={page_num} x={int(center_x)} y={int(center_y)}"
+                            )
+                        else:
+                            override_anchor_rect = fitz.Rect(anchor_rects[0])
+                            page.add_redact_annot(override_anchor_rect, fill=(1, 1, 1))
+                            page.apply_redactions()
+                        place_seal_on_anchor = True
+                        if anchor_rects:
+                            logger.info(
+                                "signature.seal_position: employee legajo placeholder detected "
+                                f"page={page_num} x={int(override_anchor_rect.x0)} y={int(override_anchor_rect.y0)}"
+                            )
                     elif normalized_doc_type == "UNEMPLOYMENT":
                         firma_rects = self.search_text_robust(page, "Firma")
                         if firma_rects:
@@ -432,18 +482,22 @@ class SignatureEngine:
                             # The requirement is to place only the validation seal for UNEMPLOYMENT.
                 except Exception as e:
                     logger.warning(f"signature.document_anchor_failed: {e}")
-                    if normalized_doc_type in {"LABOR_MODEL", "TLG-INT-001"}:
+                    if normalized_doc_type in {"LABOR_MODEL", "TLG-INT-001", "EMPLOYEE_LEGAJO"}:
                         raise
 
                 # Detect ALL positions using Layout-Aware engine
-                positions = self.detect_signature_positions(page, role)
+                positions = (
+                    []
+                    if normalized_doc_type == "EMPLOYEE_LEGAJO"
+                    else self.detect_signature_positions(page, role)
+                )
                 
                 # Removed Disambiguation Fallback (Phase 21: Abolish Anchor Theft)
                 # Each role must now rely on its own anchor labels to prevent misplacement.
                 
                 # Sign all detected positions (e.g. Original and Duplicado)
                 # Removed the [0] slice to support multi-copy receipts
-                if apply_to_all_pages and not positions and not is_v2:
+                if apply_to_all_pages and not positions and not is_v2 and normalized_doc_type != "EMPLOYEE_LEGAJO":
                     margin = 24
                     sig_w = min(config.SIGNATURE_MAX_WIDTH, max(config.SIGNATURE_MIN_WIDTH, page.rect.width * 0.22))
                     sig_h = config.SIGNATURE_HEIGHT
@@ -462,7 +516,7 @@ class SignatureEngine:
                 # Phase 25: Hard Singularization - Only process the single best match per page
                 # This removes the duplicate signature from the other sector.
                 # Phase 25/Modernization: Logic based on Signature Version
-                if not is_v2:
+                if not is_v2 and normalized_doc_type != "EMPLOYEE_LEGAJO":
                     for pos in positions[:1]:
                         anchor_bbox = pos["bbox"]
                         anchor_x0, anchor_y0 = anchor_bbox[0], anchor_bbox[1]
