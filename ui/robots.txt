@@ -12,4 +12,4 @@ Disallow: /login
 Disallow: /register
 
 # Ubicación del sitemap
-Sitemap: http://mymanagerh.com/sitemap.xml
+Sitemap: https://mymanagerh.com/sitemap.xml

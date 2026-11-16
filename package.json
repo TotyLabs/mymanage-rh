@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "images:optimize": "python scripts/optimize_landing_images.py",
+    "prerender:public": "node scripts/prerender_public.mjs"
+  },
   "dependencies": {
     "@simplepdf/react-embed-pdf": "^1.13.0"
   }

@@ -1,0 +1,171 @@
+/* ==========================================================================
+   MyManageRH — Design System v2, capa de pantallas
+   Se carga después de ds.css. Ajusta las pantallas internas que styles.css
+   define con el estilo anterior: franjas de color laterales, mayúsculas,
+   texto de 10-11 px, animaciones infinitas y bloques sin versión móvil.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Utilidades que el HTML ya usa pero ninguna hoja definía
+   -------------------------------------------------------------------------- */
+.font-mono { font-family: var(--font-mono); }
+.text-lg { font-size: 1.125rem; }
+.text-sm { font-size: var(--text-caption); }
+.link { color: var(--brand-700); font-weight: 500; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.btn-xl { min-height: 48px; padding: 12px 24px; font-size: 15px; }
+.btn-block { min-height: 46px; font-size: 15px; }
+
+/* --------------------------------------------------------------------------
+   Marca y encabezado público
+   -------------------------------------------------------------------------- */
+.brand-link { gap: 0; }
+.brand-logo { display: block; width: auto; height: 28px; }
+
+.header-actions { gap: 8px; flex-wrap: nowrap; }
+.header-actions .link {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  color: var(--slate-700);
+  font-size: var(--text-label);
+}
+.header-actions .link:hover { background: var(--slate-100); color: var(--ink); text-decoration: none; }
+
+@media (max-width: 768px) {
+  .header-actions { width: auto; }
+  .brand-logo { height: 26px; }
+}
+
+/* Pantallas públicas: styles.css dejaba el padding horizontal de .page en 0
+   (pisaba al de .container) y las tarjetas quedaban pegadas al borde. */
+.layout[data-shell="public"] > .page {
+  padding-left: clamp(16px, 4vw, 24px);
+  padding-right: clamp(16px, 4vw, 24px);
+}
+
+/* --------------------------------------------------------------------------
+   Documentación (modo "Read"): columna de lectura cómoda y versión móvil.
+   Antes la grilla de 280px + contenido no tenía regla para pantallas chicas.
+   -------------------------------------------------------------------------- */
+.docs-container { border-radius: var(--radius-lg); min-height: calc(100dvh - var(--nav-height) - 120px); }
+.docs-sidebar { background: var(--slate-50); }
+.category-label { color: var(--slate-500); font-size: var(--text-caption); font-weight: 600; letter-spacing: 0; text-transform: none; }
+.docs-nav ul li a { min-height: 36px; font-size: var(--text-label); }
+.docs-header h1 { font-size: 28px; }
+.docs-meta { color: var(--slate-500); }
+.markdown-body { max-width: 68ch; line-height: 1.7; color: var(--slate-800); }
+.markdown-body h2 { font-size: 20px; }
+.markdown-body p { color: var(--slate-800); }
+.markdown-body table { display: block; overflow-x: auto; }
+.markdown-body th, .markdown-body td { font-size: var(--text-label); }
+
+@media (max-width: 900px) {
+  .docs-container { grid-template-columns: 1fr; }
+  .docs-sidebar { padding: 16px; border-right: 0; border-bottom: 1px solid var(--line); }
+  .docs-nav-category { margin-top: 16px; }
+  .docs-main { padding: 24px 20px; }
+  .docs-header { flex-direction: column; gap: 12px; margin-bottom: 24px; padding-bottom: 16px; }
+}
+
+/* --------------------------------------------------------------------------
+   Firma
+   -------------------------------------------------------------------------- */
+.sign-sidebar-sticky { top: calc(var(--nav-height) + 16px); }
+.sign-pdf-iframe-unified { height: calc(100dvh - 200px); }
+.sign-pdf-viewer { border-radius: var(--radius-lg); }
+.sign-canvas-container, .signature-canvas-container { border-radius: var(--radius-lg); }
+
+/* Sin franja de color lateral: el estado verificado cambia el borde completo */
+.sign-action-card { border-left: 1px solid var(--line); }
+.sign-action-card.verified { border-color: var(--success-text); }
+
+/* La animación infinita en "verificado" distrae mientras se firma */
+.sign-otp-success { animation: none; }
+.sign-otp-status-badge { font-size: var(--text-caption); }
+
+.signature-badge { font-size: var(--text-caption); letter-spacing: 0; text-transform: none; }
+
+@media (max-width: 1023.98px) {
+  .sign-sidebar-sticky { position: static; }
+  .sign-pdf-iframe-unified { height: 60dvh; min-height: 360px; }
+}
+
+/* --------------------------------------------------------------------------
+   Verificación pública
+   -------------------------------------------------------------------------- */
+.verify-card-valid, .verify-card-invalid { border-top: 1px solid var(--line); }
+.verify-card-valid .verify-card-header { background: var(--success-bg); border-bottom-color: var(--success-border); }
+.verify-card-invalid .verify-card-header { background: var(--error-bg); border-bottom-color: var(--error-border); }
+
+/* Antes: verde sobre negro. Ahora legible y seleccionable como cualquier dato. */
+.verify-hash-box {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--slate-50);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* --------------------------------------------------------------------------
+   Aceptación de términos
+   -------------------------------------------------------------------------- */
+.tos-gate-overlay { background: rgba(23, 32, 51, 0.5); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.tos-gate-card { border: 1px solid var(--line); animation: ds-modal-in var(--duration-smooth) var(--ease-out); }
+
+@media (max-width: 640px) {
+  .tos-gate-overlay { align-items: flex-end; padding: 0; }
+  .tos-gate-card { max-height: 100dvh; border-radius: var(--radius-xl) var(--radius-xl) 0 0; animation-name: ds-sheet-in; }
+  .tos-gate-header, .tos-gate-footer { padding: 20px; }
+  .tos-gate-body { padding: 16px; }
+  .tos-viewer { padding: 20px; }
+}
+
+/* --------------------------------------------------------------------------
+   Historial y notificaciones: sin franjas de color laterales
+   -------------------------------------------------------------------------- */
+/* styles.css tiñe el borde izquierdo (franja); acá el borde es el de cualquier tarjeta */
+.empresa-history-stat { border-left-width: 1px; border-radius: var(--radius-lg); }
+.empresa-history-stat-complete, .empresa-history-stat-pending { border-left-color: var(--line); }
+.empresa-history-stat-complete strong { color: var(--success-text); }
+.empresa-history-stat-pending strong { color: var(--warning-text); }
+.empresa-history-row-right .badge { font-size: var(--text-caption); }
+.empresa-history-view-trigger { border-radius: var(--radius-md); }
+.empresa-history-view-menu-panel { border-radius: var(--radius-md); }
+
+.empresa-kpi-success, .empresa-kpi-info, .empresa-kpi-error { border-bottom: 1px solid var(--line); }
+.empresa-kpi-success .kpi-value { color: var(--success-text); }
+.empresa-kpi-info .kpi-value { color: var(--brand-700); }
+.empresa-kpi-error .kpi-value { color: var(--error-text); }
+
+.notification-item { border-radius: var(--radius-md); }
+.notification-item.unread { border-left: 0; background: var(--brand-50); }
+.unread-dot { background: var(--brand-700); }
+.btn-delete-notif { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; }
+
+/* --------------------------------------------------------------------------
+   Vistas previas, etiquetas y texto chico (mínimo 12 px)
+   -------------------------------------------------------------------------- */
+.preview-section-title { background: var(--slate-100); font-size: var(--text-caption); letter-spacing: 0; text-transform: none; }
+.preview-field { font-size: var(--text-label); }
+.empresa-export-debug-label { font-size: var(--text-caption); }
+.empresa-employee-action-group .empresa-icon-btn.btn-delete,
+.empresa-employee-action-group .empresa-icon-btn.btn-restore { font-size: var(--text-caption); }
+.empresa-json-box { font-family: var(--font-mono); font-size: var(--text-caption); }
+
+@media (pointer: coarse) {
+  .btn-delete-notif, .empresa-history-view-trigger { min-width: 40px; min-height: 40px; }
+  .tab-btn, .empresa-history-mode { min-height: 44px; }
+}

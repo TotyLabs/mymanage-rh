@@ -2,9 +2,9 @@ import { logoutSession, showToast } from './common.js?v=123';
 
 /* ==========================================================================
    Shell de la aplicación
-   - Rutas públicas: encabezado simple.
-   - #/empresa/* y #/empleado/*: barra lateral (escritorio) o barra inferior
-     con hoja "Más" (móvil/tablet). Una sola navegación para ambos tamaños.
+   - Rutas públicas: encabezado simple con el logo.
+   - #/empresa/* y #/empleado/*: barra lateral contraíble (escritorio) o barra
+     inferior con hoja "Más" (móvil/tablet). Una sola navegación para ambos.
    Contratos que se conservan:
    - exports renderLayout / bindHeader
    - #headerNav, #page, #toasts, #confirmModal (+ #confirmMsg/#confirmOk/#confirmCancel)
@@ -80,9 +80,9 @@ function isActive(path, item) {
   return targets.some((target) => path === target || path.startsWith(`${target}?`) || path.startsWith(`${target}/`));
 }
 
-function createPublicLink(href, text) {
+function createPublicLink(href, text, className = 'link') {
   const link = document.createElement('a');
-  link.className = 'link';
+  link.className = className;
   link.href = href;
   link.textContent = text;
   return link;
@@ -116,8 +116,8 @@ export function renderLayout(root) {
 
       <header class="site-header" id="siteHeader">
         <div class="brand">
-          <a href="#/" class="brand-link">
-            <span class="brand-title">MyManageRH</span>
+          <a href="/ui/" class="brand-link" aria-label="MyManageRH, ir al inicio">
+            <img class="brand-logo" src="./assets/logo/logo-horizontal.svg" alt="MyManageRH" width="158" height="28" decoding="async" />
           </a>
         </div>
 
@@ -147,9 +147,9 @@ export function renderLayout(root) {
       <footer class="footer">
         <div class="footer-content">
           <div class="footer-legal">
-            <a href="#/documentacion?docId=tos">Términos y Condiciones</a>
+            <a href="/ui/?page=terms">Términos y Condiciones</a>
             <span class="separator" aria-hidden="true">|</span>
-            <a href="#/documentacion?docId=privacy">Política de Privacidad</a>
+            <a href="/ui/?page=privacy">Política de Privacidad</a>
           </div>
           <div class="footer-copyright">
             © 2026 MyManageRH
@@ -221,6 +221,10 @@ export function bindHeader() {
     if (type === 'public') {
       if (path.startsWith('#/login') || path.startsWith('#/sign/')) {
         actions.appendChild(createPublicLink('#/select-role', 'Volver'));
+      } else if (path === '#/' || path === '#' || path === '') {
+        // Landing: acceso directo desde el encabezado
+        actions.appendChild(createPublicLink('#/soporte', 'Soporte'));
+        actions.appendChild(createPublicLink('#/select-role', 'Ingresar', 'btn btn-primary btn-sm'));
       }
       return;
     }

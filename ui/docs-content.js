@@ -22,7 +22,7 @@ export const docsContent = {
         ['tos-01-introduccion', '1. Introducción y aceptación', `
           <p>Estos Términos y Condiciones (los <strong>Términos</strong>) regulan el acceso y uso de MyManageRH. El Servicio está dirigido principalmente a organizaciones que administran información laboral y a las personas que esas organizaciones autorizan a utilizarlo.</p>
           <p>La persona que acepta en nombre de una organización declara tener facultades suficientes para obligarla. La aceptación puede realizarse mediante un mecanismo electrónico de la Plataforma; la fecha, versión y evento de aceptación podrán quedar registrados. Cada Usuario también debe respetar las reglas de uso que le sean aplicables. El uso de un documento o una firma no implica, por sí solo, que el Usuario acepte obligaciones laborales distintas de las expresamente informadas.</p>
-          <p>Los Términos se complementan, según corresponda, con la orden comercial, el contrato SaaS, el acuerdo de tratamiento de datos (DPA) y la <a href="/privacy">Política de Privacidad de MyManageRH</a>. Si existe una contradicción, prevalecerá el documento específico firmado para la contratación respecto de su objeto, salvo normas imperativas. Las modificaciones se rigen por la sección 29.</p>
+          <p>Los Términos se complementan, según corresponda, con la orden comercial, el contrato SaaS, el acuerdo de tratamiento de datos (DPA) y la <a href="/ui/?page=privacy">Política de Privacidad de MyManageRH</a>. Si existe una contradicción, prevalecerá el documento específico firmado para la contratación respecto de su objeto, salvo normas imperativas. Las modificaciones se rigen por la sección 29.</p>
           <p>Quien no tenga capacidad legal para aceptar estos Términos no debe crear una Cuenta ni aceptar en nombre de otra persona u organización sin autorización.</p>
         `],
         ['tos-02-identificacion', '2. Identificación de MyManageRH', `
@@ -138,7 +138,7 @@ export const docsContent = {
           <p>Quien reciba una solicitud legal de divulgación procurará informar a la otra parte cuando la ley lo permita y limitar la entrega a lo requerido. Los Datos Personales también se rigen por la Política de Privacidad y, cuando corresponda, el DPA.</p>
         `],
         ['tos-23-privacidad', '23. Privacidad y datos personales', `
-          <p>El tratamiento de datos personales se describe en la <a href="/privacy">Política de Privacidad de MyManageRH</a>. Para datos laborales que MyManageRH procesa siguiendo instrucciones del Cliente, las partes deben documentar sus roles y obligaciones en el DPA aplicable. Esta sección no reemplaza esos documentos.</p>
+          <p>El tratamiento de datos personales se describe en la <a href="/ui/?page=privacy">Política de Privacidad de MyManageRH</a>. Para datos laborales que MyManageRH procesa siguiendo instrucciones del Cliente, las partes deben documentar sus roles y obligaciones en el DPA aplicable. Esta sección no reemplaza esos documentos.</p>
         `],
         ['tos-24-suspension', '24. Suspensión', `
           <p>MyManageRH podrá limitar o suspender temporalmente una Cuenta, función u Organización cuando sea razonablemente necesario para responder a una orden legal, riesgo de seguridad, acceso no autorizado, uso ilícito, incumplimiento material o falta de pago cuando esté pactada.</p>
@@ -162,7 +162,7 @@ export const docsContent = {
         `],
         ['tos-29-cambios-terminos', '29. Modificaciones de los Términos', `
           <p>MyManageRH identificará cada versión y fecha. Los cambios se comunicarán mediante la Plataforma, correo u otro canal razonable. Los cambios materiales se informarán antes de su vigencia y se solicitará nueva aceptación cuando la ley, el contrato o la naturaleza del cambio lo requieran.</p>
-          <p>La falta de aceptación de una modificación que requiera consentimiento puede impedir el uso de las funciones afectadas; el Cliente podrá terminar el Servicio según su contrato. La versión vigente estará disponible en <a href="/terms">/terms</a>.</p>
+          <p>La falta de aceptación de una modificación que requiera consentimiento puede impedir el uso de las funciones afectadas; el Cliente podrá terminar el Servicio según su contrato. La versión vigente estará disponible en <a href="/ui/?page=terms">Términos y Condiciones</a>.</p>
         `],
         ['tos-30-comunicaciones', '30. Comunicaciones', `
           <p>Las comunicaciones operativas podrán cursarse dentro de la Plataforma, al correo asociado a la Cuenta o a los contactos que el Cliente registre. El Cliente debe mantener esos canales actualizados y revisar avisos relevantes.</p>
@@ -312,7 +312,7 @@ export const docsContent = {
           <p>Las funciones externas no deben habilitarse sin evaluar qué datos reciben, dónde los procesan y qué información corresponde comunicar al Cliente y a los titulares.</p>
         `],
         ['privacy-24-modificaciones', '24. Modificaciones de la Política', `
-          <p>Cada versión indicará su fecha de actualización y entrada en vigencia. Los cambios se publicarán en <a href="/privacy">/privacy</a> y podrán comunicarse por la Plataforma o por correo. Los cambios materiales se informarán antes de su vigencia y se solicitará nueva aceptación cuando la ley lo exija.</p>
+          <p>Cada versión indicará su fecha de actualización y entrada en vigencia. Los cambios se publicarán en <a href="/ui/?page=privacy">Política de Privacidad</a> y podrán comunicarse por la Plataforma o por correo. Los cambios materiales se informarán antes de su vigencia y se solicitará nueva aceptación cuando la ley lo exija.</p>
           <p>El uso continuado del Servicio no reemplaza una aceptación expresa cuando sea necesaria. Archivo de versiones anteriores: [COMPLETAR: mecanismo de consulta].</p>
         `],
         ['privacy-25-contacto', '25. Contacto', `
