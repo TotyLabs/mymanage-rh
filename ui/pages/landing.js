@@ -1,19 +1,19 @@
 /**
  * LandingPage Component
- * Executive-level one-page entry point for MyManagerRH.
- * Focused on B2B conversion, legal integrity, and system infrastructure.
+ * Entrada de una sola página para MyManageRH: conversión B2B, integridad legal
+ * e infraestructura del sistema.
  */
 
+const svg = (inner, size = 24, strokeWidth = 2) =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${strokeWidth}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+
 const ICONS = {
-  check: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
-  lock: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`,
-  shield: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`,
-  file: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>`,
-  users: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>`,
-  upload: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>`,
-  pen: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>`,
-  eye: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`,
-  grid: `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>`,
+  lock: svg('<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>'),
+  shield: svg('<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>'),
+  file: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline>'),
+  upload: svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line>'),
+  pen: svg('<path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle>'),
+  grid: svg('<rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>'),
 };
 
 export async function render(container) {
@@ -21,9 +21,9 @@ export async function render(container) {
     <div class="landing-page">
       <section class="hero-section reveal-on-scroll">
         <div class="hero-copy">
-          <span class="eyebrow">MyManageRH</span>
-          <h1>MyManageRH</h1>
-          <p class="hero-lead">Gestión laboral con firma digital y auditoría inalterable para tu empresa. Centraliza legajos, recibos y cumplimiento legal en un solo sistema seguro.</p>
+          <span class="eyebrow">Firma electrónica de recibos</span>
+          <h1>Gestión laboral con firma digital y auditoría inalterable</h1>
+          <p class="hero-lead">Centralizá los legajos, los recibos y el cumplimiento legal de tu empresa en un solo sistema seguro.</p>
           <div class="hero-actions">
             <a href="#/select-role" class="btn btn-primary btn-xl">Ingresar al sistema</a>
             <a href="#/soporte" class="btn btn-secondary btn-xl">Contactar Soporte</a>
@@ -44,7 +44,17 @@ export async function render(container) {
           </div>
         </div>
         <div class="hero-media">
-          <img src="./IVMMRH/resource_8MPyrSyYQQ37qJAhRh3_JT.png" alt="Panel de control de empresa MyManageRH" loading="eager" />
+          <img
+            src="./assets/landing/hero-768.webp"
+            srcset="./assets/landing/hero-480.webp 480w, ./assets/landing/hero-768.webp 768w, ./assets/landing/hero-1080.webp 1080w"
+            sizes="(min-width: 1024px) 48vw, 100vw"
+            width="1080"
+            height="1920"
+            alt="Panel de control de empresa MyManageRH"
+            loading="eager"
+            fetchpriority="high"
+            decoding="async"
+          />
         </div>
       </section>
 
@@ -82,7 +92,7 @@ export async function render(container) {
           <div class="security-copy">
             <span class="section-label">Infraestructura Corporativa</span>
             <h2>Cumplimiento Legal y Respaldo Técnico</h2>
-            <p>MyManagerRH es una solución de infraestructura que resuelve la brecha entre la gestión de personal y la exigencia legal, protegiendo los datos sensibles bajo estrictos estándares de ciberseguridad.</p>
+            <p>MyManageRH es una solución de infraestructura que resuelve la brecha entre la gestión de personal y la exigencia legal, protegiendo los datos sensibles bajo estrictos estándares de ciberseguridad.</p>
           </div>
           <div class="security-grid">
             <div class="security-item delay-1">
@@ -117,7 +127,16 @@ export async function render(container) {
           </div>
           <div class="campaign-grid single">
             <article class="campaign-card">
-              <img src="./IVMMRH/resource_aFFXnvDIdP02Z9Rc60f4Q8.png" alt="Evidencia inmutable" loading="lazy" />
+              <img
+                src="./assets/landing/evidence-768.webp"
+                srcset="./assets/landing/evidence-480.webp 480w, ./assets/landing/evidence-768.webp 768w, ./assets/landing/evidence-1080.webp 1080w"
+                sizes="(min-width: 1024px) 48vw, 100vw"
+                width="1080"
+                height="1920"
+                alt="Evidencia inmutable"
+                loading="lazy"
+                decoding="async"
+              />
               <h4>Evidencia inmutable para cada firma</h4>
             </article>
           </div>
@@ -137,21 +156,24 @@ export async function render(container) {
     </div>
   `;
 
-  const observerOptions = {
-    root: null,
-    rootMargin: '0px',
-    threshold: 0.15
-  };
+  // El ocultamiento inicial lo activa JS: si el observador no existe o falla,
+  // el contenido queda visible igual (ver landing.css, .reveal-ready).
+  if (!('IntersectionObserver' in window)) return;
 
-  const observer = new IntersectionObserver((entries, observer) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, observerOptions);
+  const page = container.querySelector('.landing-page');
+  page?.classList.add('reveal-ready');
 
-  const revealElements = container.querySelectorAll('.reveal-on-scroll');
-  revealElements.forEach(el => observer.observe(el));
+  const observer = new IntersectionObserver(
+    (entries, obs) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+          obs.unobserve(entry.target);
+        }
+      });
+    },
+    { root: null, rootMargin: '0px', threshold: 0.15 }
+  );
+
+  container.querySelectorAll('.reveal-on-scroll').forEach((el) => observer.observe(el));
 }

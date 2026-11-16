@@ -116,7 +116,7 @@ function buildShell() {
 
         <!-- Recent Messages Hub -->
         <div class="card p-0 bg-white border-slate-100 shadow-sm flex flex-col flex-1 lg:max-w-[400px] overflow-hidden" id="notif-widget-container">
-          <div class="flex justify-between items-center px-20 py-12 bg-slate-50/80 border-b border-slate-100">
+          <div class="flex-between px-20 py-12 bg-slate-50/80 border-b border-slate-100">
               <h3 class="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Mensajes Recientes</h3>
               <a href="#/empresa/notificaciones" class="text-[11px] font-bold text-blue-600 hover:text-blue-700 transition-colors">VER TODO</a>
           </div>

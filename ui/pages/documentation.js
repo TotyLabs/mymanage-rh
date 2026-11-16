@@ -2,7 +2,7 @@
  * Documentation Page
  * Layout: Sidebar (categories) | Main Panel (markdown viewer) | Top bar (title + metadata)
  */
-import { docsContent } from '../docs-content.js?v=20260927c';
+import { docsContent } from '../docs-content.js?v=20261116seo';
 
 export const render = async (container, params = {}) => {
   const docId = params.get('docId') || 'tos';
@@ -49,7 +49,7 @@ function renderCategory(name, ids, currentId) {
           const d = docsContent[id];
           return `
             <li class="${id === currentId ? 'active' : ''}">
-              <a href="#/documentacion?docId=${id}">${d.title}</a>
+              <a href="/ui/?page=${id === 'tos' ? 'terms' : id}">${d.title}</a>
             </li>
           `;
         }).join('')}

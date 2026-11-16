@@ -2,22 +2,22 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 
   <url>
-    <loc>https://mymanagerh.com/</loc>
-    <lastmod>2026-06-26</lastmod>
+    <loc>https://mymanagerh.com/ui/</loc>
+    <lastmod>2026-11-16</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
 
   <url>
-    <loc>https://mymanagerh.com/terms</loc>
-    <lastmod>2026-09-27</lastmod>
+    <loc>https://mymanagerh.com/ui/?page=terms</loc>
+    <lastmod>2026-11-16</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
 
   <url>
-    <loc>https://mymanagerh.com/privacy</loc>
-    <lastmod>2026-09-27</lastmod>
+    <loc>https://mymanagerh.com/ui/?page=privacy</loc>
+    <lastmod>2026-11-16</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>

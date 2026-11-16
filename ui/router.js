@@ -4,8 +4,9 @@
 import { getMe, logoutSession } from './common.js?v=123';
 import { tosAcceptance } from './tos-acceptance.js?v=123';
 import { ROUTES } from './constants.js?v=123';
+import { clearPageSchema, getLegalDocumentRoute, updatePageSeo } from './seo.js?v=2';
 
-const VERSION = '126'; // Refresh the employee legajo signing flow
+const VERSION = '129'; // Refresh public SEO and landing performance assets
 
 const loadPage = (page) => import(`./pages/${page}.js?v=${VERSION}`);
 
@@ -116,6 +117,10 @@ window.logout = async () => {
 };
 
 function parseHash() {
+  if (!location.hash) {
+    const legalRoute = getLegalDocumentRoute(location.search);
+    if (legalRoute) return legalRoute;
+  }
   const hash = location.hash || '#/';
   const [path, queryString] = hash.split('?');
   return {
@@ -199,6 +204,7 @@ function renderRouteError(error, path = '') {
 export function initRouter() {
   async function guardAndRender() {
     const { path, params } = parseHash();
+    clearPageSchema();
     
     // 1. Fetch User (Unified check)
     const user = await getCurrentUser();
@@ -303,8 +309,10 @@ export function initRouter() {
       if (module?.render) {
         await module.render(pageEl, params);
       }
+      updatePageSeo({ path, params, user, pageElement: pageEl });
     } catch (error) {
       renderRouteError(error, path);
+      updatePageSeo({ path, params, user: true, pageElement: null });
     }
   }
 

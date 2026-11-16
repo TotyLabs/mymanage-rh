@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 import asyncio
 from datetime import timedelta
 from fastapi import FastAPI, Depends, Request, HTTPException
-from fastapi.responses import JSONResponse, RedirectResponse, HTMLResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, HTMLResponse
 from fastapi.exception_handlers import http_exception_handler as default_http_exception_handler
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -550,15 +550,36 @@ async def deep_health_check(db: Session = Depends(get_db)):
 async def ui_redirect_no_slash():
     return RedirectResponse(url=f"{config.BASE_PUBLIC_URL}/ui/")
 
+@app.get("/ui/", include_in_schema=False)
+async def ui_prerender(request: Request):
+    page = request.query_params.get("page")
+    prerendered_pages = {
+        None: "home.html",
+        "terms": "terms.html",
+        "privacy": "privacy.html",
+    }
+    filename = prerendered_pages.get(page)
+    if filename is None:
+        return FileResponse(str(Path(UI_DIR) / "index.html"), media_type="text/html")
+    return FileResponse(str(Path(UI_DIR) / "prerender" / filename), media_type="text/html")
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    return FileResponse(str(UI_DIR / "robots.txt"), media_type="text/plain")
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap_xml():
+    return FileResponse(str(UI_DIR / "sitemap.xml"), media_type="application/xml")
+
 
 @app.get("/terms", include_in_schema=False)
 async def terms_redirect():
-    return RedirectResponse(url="/ui/#/documentacion?docId=tos")
+    return RedirectResponse(url="/ui/?page=terms")
 
 
 @app.get("/privacy", include_in_schema=False)
 async def privacy_redirect():
-    return RedirectResponse(url="/ui/#/documentacion?docId=privacy")
+    return RedirectResponse(url="/ui/?page=privacy")
 
 
 @app.get("/documentacion", include_in_schema=False)

@@ -13,7 +13,7 @@ export async function render(container) {
           <span class="badge neutral">Plataforma de firma electrónica</span>
         </div>
 
-        <h1 class="role-select-title">MyManageRH</h1>
+        <h1 class="role-select-title">Elegí cómo querés ingresar</h1>
 
         <p class="role-select-desc">
           Gestión centralizada y segura de recibos de sueldo, firmas digitales y documentación laboral.
@@ -21,7 +21,7 @@ export async function render(container) {
       </div>
 
       <div class="role-grid">
-        <article class="role-card role-card-company" data-role="empresa" tabindex="0">
+        <article class="role-card role-card-company" data-role="empresa" tabindex="0" role="link" aria-label="Ingreso corporativo: panel administrativo para empresas">
           <div class="role-card-head">
             <div class="role-card-icon role-card-icon-company" aria-hidden="true">
               <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -39,13 +39,13 @@ export async function render(container) {
             Subí recibos en lote, gestioná empleados y supervisá el estado de firma de cada documento.
           </p>
 
-          <button class="btn role-btn" type="button" tabindex="-1">
+          <span class="btn role-btn" aria-hidden="true">
             Ingreso corporativo
             <svg class="role-btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-          </button>
+          </span>
         </article>
 
-        <article class="role-card role-card-employee" data-role="empleado" tabindex="0">
+        <article class="role-card role-card-employee" data-role="empleado" tabindex="0" role="link" aria-label="Ingreso empleados: portal personal">
           <div class="role-card-head">
             <div class="role-card-icon role-card-icon-employee" aria-hidden="true">
               <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -63,23 +63,23 @@ export async function render(container) {
             Accedé a tu legajo, descargá recibos de haberes y firmá documentación electrónicamente.
           </p>
 
-          <button class="btn role-btn" type="button" tabindex="-1">
+          <span class="btn role-btn" aria-hidden="true">
             Ingreso empleados
             <svg class="role-btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-          </button>
+          </span>
         </article>
       </div>
 
       <div class="role-select-trust">
         <span class="role-trust-item">
-          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
           </svg>
           Infraestructura segura
         </span>
 
         <span class="role-trust-item">
-          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
           </svg>
           Cumplimiento documental
@@ -98,9 +98,9 @@ export async function render(container) {
             <p class="role-support-banner-desc">Contactá directamente con nuestro equipo de atención</p>
           </div>
         </div>
-        <span class="btn role-support-banner-btn">
+        <span class="btn btn-secondary role-support-banner-btn">
           Ir a Soporte
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
         </span>
       </a>
     </section>
