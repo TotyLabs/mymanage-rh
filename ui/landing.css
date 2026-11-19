@@ -75,19 +75,9 @@
   padding: 56px 0 8px;
 }
 
-.hero-lead { max-width: 52ch; margin: 0 0 32px; font-size: 1.125rem; }
+.hero-lead { max-width: 68ch; margin: 0 0 32px; font-size: 1.0625rem; }
 
 .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 40px; }
-
-.hero-highlights {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px;
-  padding-top: 24px;
-  border-top: 1px solid var(--line);
-}
-.hero-highlights strong { display: block; margin-bottom: 4px; color: var(--ink); font-size: 15px; font-weight: 600; }
-.hero-highlights p { margin: 0; color: var(--slate-500); font-size: 14px; line-height: 1.45; }
 
 .hero-media img {
   width: 100%;
@@ -127,6 +117,100 @@
   border-radius: var(--radius-md);
 }
 .feature-icon-wrapper { background: var(--brand-50); color: var(--brand-700); }
+
+/* Servicios y contenido de la plataforma */
+.service-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: stretch;
+}
+
+.service-card {
+  min-width: 0;
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.service-card h3,
+.platform-feature h3 {
+  margin: 0 0 12px;
+  color: var(--ink);
+  font-size: 1.125rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.service-card p,
+.platform-feature p,
+.platform-roadmap {
+  margin: 0;
+  color: var(--slate-600);
+  font-size: 15px;
+  line-height: 1.65;
+}
+.service-card strong { color: var(--ink); }
+
+.platform-section > h2,
+.advantages-section > h2 {
+  max-width: 850px;
+  margin: 0 auto 20px;
+  color: var(--ink);
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+}
+.platform-section > h2 { text-align: center; }
+.platform-showcase {
+  overflow: hidden;
+  margin: 28px 0 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.platform-showcase img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.platform-features {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 32px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.platform-feature {
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.platform-feature:last-child { grid-column: 1 / -1; }
+.platform-roadmap { max-width: 80ch; margin: 28px auto 0; }
+
+.advantages-section { max-width: 960px; margin-inline: auto; }
+.advantages-section > .section-subtitle { max-width: 72ch; margin: 0 0 28px; }
+.benefits-list {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding-left: 28px;
+  color: var(--slate-600);
+  line-height: 1.65;
+}
+.benefits-list li { padding-left: 6px; }
+.benefits-list li::marker { color: var(--brand-700); font-weight: 700; }
+.benefits-list strong { color: var(--ink); }
+.landing-copyright {
+  margin: -40px 0 0;
+  color: var(--slate-500);
+  font-size: 13px;
+  text-align: center;
+}
 
 /* Seguridad */
 .security-section {
@@ -194,6 +278,7 @@
 /* Responsive */
 @media (max-width: 1100px) {
   .feature-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .service-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 1024px) {
@@ -205,8 +290,9 @@
 @media (max-width: 768px) {
   .landing-page { gap: 64px; padding-bottom: 64px; }
   .hero-actions .btn { flex: 1 1 100%; }
-  .hero-highlights { grid-template-columns: 1fr; gap: 20px; }
-  .feature-grid, .security-grid { grid-template-columns: 1fr; }
+  .feature-grid, .security-grid, .platform-features { grid-template-columns: 1fr; }
+  .platform-feature:last-child { grid-column: auto; }
+  .service-card, .platform-feature { padding: 22px; }
   .security-section { padding: 40px 20px; }
   .cta-panel { flex-direction: column; align-items: stretch; padding: 28px 20px; text-align: left; }
   .cta-panel .btn { width: 100%; }

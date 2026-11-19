@@ -73,7 +73,7 @@ def test_public_pages_are_prerendered_with_matching_seo_metadata():
         assert '<meta name="twitter:image" content="https://mymanagerh.com/ui/assets/social/mymanagerh-social-card.png"' in response.text
         assert response.text.count('rel="canonical"') == 1
         assert response.text.count('name="description"') == 1
-        assert '<script type="module" src="app.js?v=131"></script>' in response.text
+        assert '<script type="module" src="app.js?v=135"></script>' in response.text
         assert 'lang="es-AR"' in response.text
 
         schema_match = re.search(
@@ -126,11 +126,22 @@ def test_fallback_shell_has_no_public_canonical_and_links_are_crawlable():
 def test_landing_prerender_uses_responsive_optimized_images():
     response = client.get("/ui/")
     assert response.status_code == 200
-    assert 'srcset="./assets/landing/hero-480.webp 480w, ./assets/landing/hero-768.webp 768w, ./assets/landing/hero-1080.webp 1080w"' in response.text
+    assert 'srcset="./assets/landing/equipo-asesoramiento-480.webp 480w, ./assets/landing/equipo-asesoramiento-768.webp 768w"' in response.text
+    assert 'src="./assets/landing/hub-historial-documentos.webp"' in response.text
     assert 'fetchpriority="high"' in response.text
-    assert 'width="1080"' in response.text
+    assert 'alt="Profesionales revisando información de gestión laboral en una computadora portátil"' in response.text
     assert 'resource_8MPyrSyYQQ37qJAhRh3_JT.png' not in response.text
+    assert "Soluciones integrales para la gestión de tu personal: 40 años de trayectoria y tecnología propia." in response.text
+    assert "Asesoramiento Laboral Especializado" in response.text
+    assert "Liquidación Integral de Sueldos" in response.text
+    assert "Hub Centralizado de Historial y Documentos" in response.text
+    assert "Auditoría de firma verificable públicamente" in response.text
+    assert "<h1>Gestión laboral con firma digital y auditoría inalterable</h1>" not in response.text
 
-    image = client.get("/ui/assets/landing/hero-480.webp")
+    image = client.get("/ui/assets/landing/equipo-asesoramiento-480.webp")
     assert image.status_code == 200
     assert image.headers["content-type"] == "image/webp"
+
+    hub_image = client.get("/ui/assets/landing/hub-historial-documentos.webp")
+    assert hub_image.status_code == 200
+    assert hub_image.headers["content-type"] == "image/webp"
