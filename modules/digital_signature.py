@@ -32,6 +32,7 @@ import time
 import fitz  # PyMuPDF
 from fastapi import APIRouter, Request, Response, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import FileResponse, RedirectResponse
+from starlette.background import BackgroundTask
 try:
     from pydantic import BaseModel, Field, field_validator
 except ImportError:
@@ -66,6 +67,17 @@ from services.document_repository import DocumentRepository
 from modules.signature import get_signature_engine, SignatureError as EngineSignatureError
 from services.signature_service import validate_and_fetch_signature_request
 from services.email_service import EmailService
+from services.encryption_service import (
+    EncryptionError,
+    EncryptionService,
+    KmsError,
+    get_encryption_service,
+)
+from services.signature_file_service import (
+    decrypt_signature_pdf,
+    encrypt_signed_pdf_result,
+    persist_signed_pdf_encryption_metadata,
+)
 from metrics.registry import metrics_registry
 import config
 
@@ -390,8 +402,9 @@ class DigitalSignatureEngine:
         organization_id = ctx["organization_id"]
 
         try:
-            original_pdf_path = cls._normalize_path(ctx["receipt_pdf_path"])
-            if not original_pdf_path.exists():
+            storage_pdf_path = cls._normalize_path(ctx["receipt_pdf_path"])
+            original_pdf_path = Path(ctx.get("_decrypted_pdf_path") or storage_pdf_path)
+            if not storage_pdf_path.exists() or not original_pdf_path.exists():
                 raise SignatureError("Original PDF file is missing from storage.")
 
             # GAP-L2-02: Fail-fast resource limits (OOM protection)
@@ -425,7 +438,7 @@ class DigitalSignatureEngine:
             logger.error(f"pdf.integrity_check_failed: {e}")
             raise SignatureError("Error al validar integridad del PDF.")
 
-        batch_folder = original_pdf_path.parent.name
+        batch_folder = storage_pdf_path.parent.name
         
         safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', ctx.get("full_name", "empleado").strip().replace(' ', '_'))
         # Phase 4 Fix: Obfuscate filename to prevent PII exposure in the filesystem
@@ -505,6 +518,10 @@ class DigitalSignatureEngine:
             import tempfile
             fd, temp_visual_path_str = tempfile.mkstemp(dir=str(signed_pdf_path.parent), prefix="tmp_visual_", suffix=".pdf")
             os.close(fd)
+            prepare_next_signer = (
+                role == "employer"
+                and ctx["next_status"] == "pending_employee_signature"
+            )
 
             logger.info(
                 "custom_document.stamp_start",
@@ -533,6 +550,7 @@ class DigitalSignatureEngine:
                 doc_type=ctx.get("doc_type"),
                 source=ctx.get("source"),
                 apply_to_all_pages=bool(ctx.get("apply_to_all_pages")),
+                prepare_next_signer=prepare_next_signer,
             )
             
             # Store SealID in context for DB finalization
@@ -560,7 +578,14 @@ class DigitalSignatureEngine:
             try:
                 # ── Multi-Signature Incremental Update ──
                 # Phase 1 Fix: Strict Cryptography Enforcement (No fallbacks allowed)
-                x509_res = x509_service.sign_pdf(temp_visual_path_str, receipt_id, signer_identity)
+                x509_res = x509_service.sign_pdf(
+                    temp_visual_path_str,
+                    receipt_id,
+                    signer_identity,
+                    prepare_next_signer=prepare_next_signer,
+                    signature_appearance=sig_result.get("field_appearance_png"),
+                    next_signer_field_box=sig_result.get("next_signer_field_box"),
+                )
                 if x509_res["status"] != "success":
                     error_msg = x509_res.get('error', 'unknown_pki_failure')
                     logger.error(f"x509.signing_failed: aborting process receipt_id={receipt_id} error={error_msg}")
@@ -959,6 +984,43 @@ class DigitalSignatureEngine:
 # Eliminated _get_signature_request_data due to GAP-R05. Using validate_and_fetch_signature_request instead.
 
 
+def _signature_pdf_for_data(data: Dict[str, Any], db: Session) -> tuple[Path, Optional[Path]]:
+    try:
+        stored_path = DigitalSignatureEngine._normalize_path(data["receipt_pdf_path"])
+    except PathSecurityError as exc:
+        raise HTTPException(404, "pdf_not_found") from exc
+
+    if not stored_path.is_file():
+        raise HTTPException(404, "pdf_not_found")
+
+    try:
+        return decrypt_signature_pdf(
+            db,
+            stored_path,
+            organization_id=str(data["organization_id"]),
+            actor_id=str(data["employee_id"]) if data.get("employee_id") else None,
+        )
+    except KmsError as exc:
+        logger.error(
+            "signature.pdf_decryption_unavailable receipt_id=%s error_type=%s",
+            data.get("receipt_id"),
+            type(exc).__name__,
+        )
+        raise HTTPException(503, "pdf_decryption_unavailable") from exc
+    except EncryptionError as exc:
+        logger.error(
+            "signature.pdf_decryption_failed receipt_id=%s error_type=%s",
+            data.get("receipt_id"),
+            type(exc).__name__,
+        )
+        raise HTTPException(500, "pdf_unavailable") from exc
+
+
+def _cleanup_decrypted_pdf(temp_path: Optional[Path]) -> None:
+    if temp_path is not None:
+        EncryptionService.cleanup_temp_file(temp_path)
+
+
 @router.get("/{token}")
 @limiter.limit("30/minute")
 async def signature_page(request: Request, token: str):
@@ -1017,16 +1079,19 @@ async def sign_info(request: Request, token: str, db: Session = Depends(get_db))
     soft_match = True
 
     # 7. Page count calculation
-    page_count = 1
+    pdf_path, decrypted_temp_path = _signature_pdf_for_data(data, db)
     try:
-        pdf_path = DigitalSignatureEngine._normalize_path(data["receipt_pdf_path"])
-        if pdf_path.exists():
-            import fitz
-            doc = fitz.open(pdf_path)
+        with fitz.open(str(pdf_path)) as doc:
             page_count = len(doc)
-            doc.close()
-    except Exception as e:
-        logger.warning(f"Could not read PDF page count in sign_info: {e}")
+    except (fitz.FileDataError, OSError, ValueError) as exc:
+        logger.error(
+            "signature.pdf_page_count_failed receipt_id=%s error_type=%s",
+            data.get("receipt_id"),
+            type(exc).__name__,
+        )
+        raise HTTPException(500, "pdf_unavailable") from exc
+    finally:
+        _cleanup_decrypted_pdf(decrypted_temp_path)
 
     return TokenInfoOut(
         employee=res_employee,
@@ -1387,13 +1452,7 @@ async def view_pdf(request: Request, token: str, db: Session = Depends(get_db)):
     if data["sr_status"] in ("rejected", "expired"):
         raise HTTPException(409, f"document_unavailable:{data['sr_status']}")
 
-    try:
-        pdf_path = DigitalSignatureEngine._normalize_path(data["receipt_pdf_path"])
-    except PathSecurityError:
-        raise HTTPException(404, "pdf_not_found")
-
-    if not pdf_path.exists():
-        raise HTTPException(404, "pdf_not_found")
+    pdf_path, decrypted_temp_path = _signature_pdf_for_data(data, db)
 
     # Auditar visualizaciÃ³n
     try:
@@ -1415,7 +1474,28 @@ async def view_pdf(request: Request, token: str, db: Session = Depends(get_db)):
     except Exception:
         db.rollback()
 
-    return FileResponse(pdf_path, media_type="application/pdf")
+    try:
+        with fitz.open(str(pdf_path)):
+            pass
+    except (fitz.FileDataError, OSError, ValueError) as exc:
+        _cleanup_decrypted_pdf(decrypted_temp_path)
+        logger.error(
+            "signature.pdf_view_validation_failed receipt_id=%s error_type=%s",
+            data.get("receipt_id"),
+            type(exc).__name__,
+        )
+        raise HTTPException(500, "pdf_unavailable") from exc
+
+    return FileResponse(
+        str(pdf_path),
+        media_type="application/pdf",
+        headers={"Cache-Control": "private, no-store"},
+        background=(
+            BackgroundTask(EncryptionService.cleanup_temp_file, decrypted_temp_path)
+            if decrypted_temp_path is not None
+            else None
+        ),
+    )
 
 
 @router.get("/{token}/page/{page_num}")
@@ -1438,24 +1518,23 @@ async def view_pdf_page(request: Request, token: str, page_num: int, db: Session
     if data["sr_status"] in ("rejected", "expired"):
         raise HTTPException(409, f"document_unavailable:{data['sr_status']}")
 
-    try:
-        pdf_path = DigitalSignatureEngine._normalize_path(data["receipt_pdf_path"])
-    except PathSecurityError:
-        raise HTTPException(404, "pdf_not_found")
-
-    if not pdf_path.exists():
-        raise HTTPException(404, "pdf_not_found")
+    pdf_path, decrypted_temp_path = _signature_pdf_for_data(data, db)
 
     try:
-        import fitz
-        doc = fitz.open(pdf_path)
-        page_count = len(doc)
-    except Exception as e:
-        logger.error(f"Error opening PDF: {e}")
-        raise HTTPException(500, "rendering_error")
+        doc = fitz.open(str(pdf_path))
+    except (fitz.FileDataError, OSError, ValueError) as exc:
+        _cleanup_decrypted_pdf(decrypted_temp_path)
+        logger.error(
+            "signature.pdf_open_failed receipt_id=%s error_type=%s",
+            data.get("receipt_id"),
+            type(exc).__name__,
+        )
+        raise HTTPException(500, "rendering_error") from exc
 
+    page_count = len(doc)
     if page_num < 0 or page_num >= page_count:
         doc.close()
+        _cleanup_decrypted_pdf(decrypted_temp_path)
         raise HTTPException(404, "page_not_found")
 
     try:
@@ -1463,12 +1542,22 @@ async def view_pdf_page(request: Request, token: str, page_num: int, db: Session
         pix = page.get_pixmap(dpi=150)
         img_bytes = pix.tobytes("png")
         doc.close()
-        return Response(content=img_bytes, media_type="image/png")
-    except Exception as e:
-        logger.error(f"Error rendering PDF page to image: {e}")
+        return Response(
+            content=img_bytes,
+            media_type="image/png",
+            headers={"Cache-Control": "private, no-store"},
+        )
+    except (RuntimeError, OSError, ValueError) as exc:
+        logger.error(
+            "signature.pdf_page_render_failed receipt_id=%s error_type=%s",
+            data.get("receipt_id"),
+            type(exc).__name__,
+        )
         if 'doc' in locals() and not doc.is_closed:
             doc.close()
-        raise HTTPException(500, "rendering_error")
+        raise HTTPException(500, "rendering_error") from exc
+    finally:
+        _cleanup_decrypted_pdf(decrypted_temp_path)
 
 
 @router.post("/{token}/accept")
@@ -1571,12 +1660,27 @@ async def accept_signature(
         # â”€â”€ Phase 2: PDF processing OFF the event loop â”€â”€
         # M-005 FIX: Use get_running_loop() instead of deprecated get_event_loop()
         started_at = time.perf_counter()
-        loop = asyncio.get_running_loop()
-        pdf_result = await loop.run_in_executor(
-            _pdf_executor,
-            DigitalSignatureEngine.process_pdf,
-            ctx,
-            sig_image_bytes,
+        input_pdf_path, decrypted_input_temp_path = _signature_pdf_for_data(ctx, db)
+        if decrypted_input_temp_path is not None:
+            ctx["_decrypted_pdf_path"] = str(input_pdf_path)
+        try:
+            loop = asyncio.get_running_loop()
+            pdf_result = await loop.run_in_executor(
+                _pdf_executor,
+                DigitalSignatureEngine.process_pdf,
+                ctx,
+                sig_image_bytes,
+            )
+        finally:
+            _cleanup_decrypted_pdf(decrypted_input_temp_path)
+            ctx.pop("_decrypted_pdf_path", None)
+
+        encrypt_signed_pdf_result(
+            db,
+            pdf_result,
+            organization_id=str(data["organization_id"]),
+            actor_id=str(data["employee_id"]),
+            actor_type="employee",
         )
 
         # â”€â”€ Phase 3: finalize DB (inside TX) â”€â”€
@@ -1589,6 +1693,12 @@ async def accept_signature(
                 actor_id=str(data["employee_id"]),
                 ip_address=get_real_ip(request),
                 user_agent=request.headers.get("User-Agent", "unknown"),
+            )
+            persist_signed_pdf_encryption_metadata(
+                db,
+                pdf_result,
+                actor_id=str(data["employee_id"]),
+                actor_type="employee",
             )
 
             # mark signature_request as signed
@@ -1622,13 +1732,21 @@ async def accept_signature(
     except Exception as e:
         # GAP-003: Comprehensive error recovery â€” clear flag and clean up orphaned PDF
         # We catch everything from Phase 1-3 failure and ensure the flag is reset.
-        logger.error(f"signature.failed token={token} error={str(e)}")
+        logger.error(
+            "signature.failed receipt_id=%s error_type=%s",
+            data.get("receipt_id"),
+            type(e).__name__,
+        )
         metrics_registry.record_signature(time.perf_counter() - started_at, success=False, generated=False, signed=False)
         try:
             with safe_transaction(db):
                 DigitalSignatureEngine.clear_processing_flag(db, str(data["receipt_id"]))
         except Exception as flag_err:
-            logger.error(f"signature.flag_cleanup_failed token={token} error={str(flag_err)}")
+            logger.error(
+                "signature.flag_cleanup_failed receipt_id=%s error_type=%s",
+                data.get("receipt_id"),
+                type(flag_err).__name__,
+            )
         
         if 'pdf_result' in locals() and pdf_result and pdf_result.get("signed_pdf_path"):
             signed_path = pdf_result["signed_pdf_path"]

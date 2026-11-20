@@ -33,15 +33,25 @@ from payroll_core import (
 )
 from payroll_utils import get_real_ip
 from modules.signature import get_signature_engine
-from modules.digital_signature import DigitalSignatureEngine, SignatureError
+from modules.digital_signature import (
+    DigitalSignatureEngine,
+    SignatureError,
+    _cleanup_decrypted_pdf,
+    _signature_pdf_for_data,
+)
 from services.signature_service import validate_and_fetch_signature_request
 from services.document_repository import DocumentRepository
 from services.encryption_service import (
+    EncryptionError,
     EncryptionService,
     KmsError,
     encryption_actor_type,
     get_encryption_service,
     record_kms_error_event,
+)
+from services.signature_file_service import (
+    encrypt_signed_pdf_result,
+    persist_signed_pdf_encryption_metadata,
 )
 from models.receipts import Receipt
 from models.tables import Organization, UserSignature
@@ -80,26 +90,18 @@ def _dni_sql_expr() -> str:
 
 def _encryption_metadata_exists(db: Session, file_path: str | Path, organization_id: str) -> bool:
     """Checks encrypted state without instantiating a KMS provider."""
-    try:
-        storage_key = EncryptionService.storage_key(file_path)
-        row = db.execute(
-            text("""
-                SELECT 1
-                FROM file_encryption_metadata
-                WHERE organization_id = CAST(:org AS UUID)
-                  AND storage_path = :storage_path
-                LIMIT 1
-            """),
-            {"org": organization_id, "storage_path": storage_key},
-        ).fetchone()
-        return bool(row)
-    except Exception:
-        # The migration may not be applied yet in legacy/dev environments.
-        try:
-            db.rollback()
-        except Exception:
-            pass
-        return False
+    storage_key = EncryptionService.storage_key(file_path)
+    row = db.execute(
+        text("""
+            SELECT 1
+            FROM file_encryption_metadata
+            WHERE organization_id = CAST(:org AS UUID)
+              AND storage_path = :storage_path
+            LIMIT 1
+        """),
+        {"org": organization_id, "storage_path": storage_key},
+    ).fetchone()
+    return bool(row)
 
 
 def _maybe_decrypted_file_response(
@@ -132,6 +134,17 @@ def _maybe_decrypted_file_response(
             headers={"Cache-Control": "private, no-store"},
             background=BackgroundTask(EncryptionService.cleanup_temp_file, temp_path),
         )
+
+    try:
+        with path.open("rb") as file:
+            is_pdf = b"%PDF-" in file.read(1024)
+    except OSError as exc:
+        logger.exception("receipt_file_read_failed")
+        raise HTTPException(500, "pdf_unavailable") from exc
+
+    if media_type == "application/pdf" and not is_pdf:
+        logger.error("receipt_pdf_invalid_or_encryption_metadata_missing")
+        raise HTTPException(500, "pdf_unavailable")
 
     return FileResponse(
         str(path),
@@ -173,59 +186,18 @@ def _encrypt_signed_pdf_result(
     actor_id: str,
     actor_type: str,
 ) -> None:
-    """Encrypts the signed PDF before DB finalization."""
-    if not config.APP_ENCRYPTION_ENABLED:
-        return
-
-    file_id = str(uuid.uuid4())
-    signed_path = Path(pdf_result["signed_pdf_path"])
-    metadata_items = []
-    current_file_id = file_id
-    current_purpose = "signed_receipt_pdf"
     try:
-        service = get_encryption_service()
-        metadata = service.encrypt_file_in_place(
-            signed_path,
-            organization_id=str(organization_id),
-            purpose="signed_receipt_pdf",
-            file_id=file_id,
-            plaintext_sha256=pdf_result["new_pdf_sha256"],
-        )
-        pdf_result["encryption_metadata"] = metadata
-        metadata_items.append(metadata)
-
-        sig_path = Path(pdf_result["sig_image_path"])
-        sig_file_id = str(uuid.uuid4())
-        current_file_id = sig_file_id
-        current_purpose = "signature_evidence_image"
-        sig_metadata = service.encrypt_file_in_place(
-            sig_path,
-            organization_id=str(organization_id),
-            purpose="signature_evidence_image",
-            file_id=sig_file_id,
-            plaintext_sha256=pdf_result["sig_image_sha256"],
-        )
-        metadata_items.append(sig_metadata)
-        pdf_result["encryption_metadata_items"] = metadata_items
-    except KmsError as exc:
-        _record_kms_error_best_effort(
+        encrypt_signed_pdf_result(
             db,
+            pdf_result,
             organization_id=str(organization_id),
             actor_id=actor_id,
             actor_type=actor_type,
-            file_id=current_file_id,
-            purpose=current_purpose,
-            error_code=str(exc),
         )
-        try:
-            signed_path.unlink(missing_ok=True)
-        except Exception:
-            logger.exception("encryption.plaintext_cleanup_failed_after_kms_error")
-        try:
-            Path(pdf_result["sig_image_path"]).unlink(missing_ok=True)
-        except Exception:
-            logger.exception("encryption.signature_image_cleanup_failed_after_kms_error")
+    except KmsError as exc:
         raise SignatureError("encryption_kms_failed_no_plaintext_persisted") from exc
+    except EncryptionError as exc:
+        raise SignatureError("signed_document_encryption_failed") from exc
 
 
 def _encrypt_uploaded_file_or_503(
@@ -820,12 +792,14 @@ async def simple_sign_receipt(
         cuil = receipt.extracted_fields.get("cuil")
         org_id = receipt.organization_id
         pdf_path = receipt.receipt_pdf_path
+        old_pdf_hash = receipt.receipt_pdf_sha256
     else:
         # Enterprise fields
         dni = receipt.receipt_metadata.get("dni")
         cuil = receipt.receipt_metadata.get("cuil")
         org_id = receipt.company_id
         pdf_path = receipt.file_path
+        old_pdf_hash = receipt.file_hash
 
     # Fallback to employee profile if still missing
     if not dni or not cuil:
@@ -858,8 +832,11 @@ async def simple_sign_receipt(
     # Process PDF
     import asyncio
     from modules.digital_signature import _pdf_executor
-    loop = asyncio.get_running_loop()
+    input_pdf_path, decrypted_temp_path = _signature_pdf_for_data(ctx, db)
+    if decrypted_temp_path is not None:
+        ctx["_decrypted_pdf_path"] = str(input_pdf_path)
     try:
+        loop = asyncio.get_running_loop()
         pdf_result = await loop.run_in_executor(_pdf_executor, DigitalSignatureEngine.process_pdf, ctx, sig_bytes)
     except Exception as e:
         logger.error(f"pdf_signing_failed: {e}")
@@ -870,6 +847,17 @@ async def simple_sign_receipt(
             r = db.query(PayrollReceipt).get(receipt_id) if source == "legacy" else db.query(Receipt).get(receipt_id)
             if r: r.processing_signature = False
         raise HTTPException(500, "error_al_firmar_pdf")
+    finally:
+        _cleanup_decrypted_pdf(decrypted_temp_path)
+        ctx.pop("_decrypted_pdf_path", None)
+
+    _encrypt_signed_pdf_result(
+        db,
+        pdf_result,
+        organization_id=str(org_id),
+        actor_id=str(user_id),
+        actor_type="employee",
+    )
 
     # 5. Finalize and Lock (and Mirror)
     with safe_transaction(db):
@@ -879,10 +867,12 @@ async def simple_sign_receipt(
         
         r.status = "signed"
         if source == "legacy":
+            r.receipt_pdf_path = pdf_result["signed_pdf_relative"]
             r.employee_signed_at = now
             r.signed_at = now
             r.receipt_pdf_sha256 = pdf_result["new_pdf_sha256"]
         else:
+            r.file_path = pdf_result["signed_pdf_relative"]
             r.employee_signed_at = now
             r.signed_at = now
             r.file_hash = pdf_result["new_pdf_sha256"]
@@ -894,15 +884,31 @@ async def simple_sign_receipt(
         if source == "legacy":
             # Update enterprise table if mirrored
             db.execute(text("""
-                UPDATE receipts SET status = 'signed', signed_at = :now, file_hash = :hash, employee_signed_at = :now
+                UPDATE receipts
+                SET status = 'signed', signed_at = :now, file_path = :path,
+                    file_hash = :hash, employee_signed_at = :now
                 WHERE company_id = :org AND file_hash = :old_hash
-            """), {"now": now, "hash": pdf_result["new_pdf_sha256"], "org": org_id, "old_hash": pdf_result["old_pdf_sha256"]})
+            """), {
+                "now": now,
+                "path": pdf_result["signed_pdf_relative"],
+                "hash": pdf_result["new_pdf_sha256"],
+                "org": org_id,
+                "old_hash": old_pdf_hash,
+            })
         else:
             # Update legacy table if mirrored
             db.execute(text("""
-                UPDATE payroll_receipts SET status = 'signed', signed_at = :now, receipt_pdf_sha256 = :hash, employee_signed_at = :now
+                UPDATE payroll_receipts
+                SET status = 'signed', signed_at = :now, receipt_pdf_path = :path,
+                    receipt_pdf_sha256 = :hash, employee_signed_at = :now
                 WHERE organization_id = :org AND receipt_pdf_sha256 = :old_hash
-            """), {"now": now, "hash": pdf_result["new_pdf_sha256"], "org": org_id, "old_hash": pdf_result["old_pdf_sha256"]})
+            """), {
+                "now": now,
+                "path": pdf_result["signed_pdf_relative"],
+                "hash": pdf_result["new_pdf_sha256"],
+                "org": org_id,
+                "old_hash": old_pdf_hash,
+            })
 
         # Log and Seal
         audit(db, org_id, "employee", user_id, "SIMPLE_SIGN", receipt_id, {"source": source, "pdf_hash": pdf_result["new_pdf_sha256"]})
@@ -916,6 +922,13 @@ async def simple_sign_receipt(
                 "sid": seal_id, "rid": receipt_id, "org": org_id, "dni": dni or "N/D", "name": user["full_name"],
                 "hash": pdf_result["new_pdf_sha256"], "meta": json.dumps({"ip": get_real_ip(request), "v_id": pdf_result.get("verification_id")})
             })
+
+        persist_signed_pdf_encryption_metadata(
+            db,
+            pdf_result,
+            actor_id=str(user_id),
+            actor_type="employee",
+        )
         
     return {"status": "signed", "signed_at": now.isoformat(), "pdf_hash": pdf_result["new_pdf_sha256"]}
 
@@ -1504,6 +1517,12 @@ async def _perform_employer_signature(
                 actor_id=actor_id,
                 ip_address=ip_address,
                 user_agent=user_agent,
+            )
+            persist_signed_pdf_encryption_metadata(
+                db,
+                pdf_result,
+                actor_id=actor_id,
+                actor_type="admin",
             )
             
             # Audit

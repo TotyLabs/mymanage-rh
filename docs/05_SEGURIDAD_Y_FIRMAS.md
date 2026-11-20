@@ -25,6 +25,12 @@ La firma criptográfica se realiza mediante certificado X.509 y pyHanko cuando l
 
 La firma visual facilita lectura humana, pero por sí sola no equivale necesariamente a una firma criptográfica verificable.
 
+### Campos de firma y revisiones incrementales
+
+Antes de firmar con pyHanko, el flujo abre el PDF con `IncrementalPdfFileWriter` y asegura que exista un campo AcroForm para el firmante actual. Cuando la firma del empleador deja el recibo pendiente de firma del empleado, también prepara en esa revisión el campo del empleado con el rectángulo reservado para su sello visual. La firma del empleador certifica el documento con permiso DocMDP `FILL_FORMS`.
+
+pyHanko firma los campos existentes con `existing_fields_only=True`. Al firmar después, el motor no modifica el contenido de página del PDF ya firmado: genera el sello visual como PNG y lo aplica como apariencia del campo de firma del empleado. La actualización incremental queda limitada al llenado del campo preexistente, manteniendo la integridad de la revisión firmada por el empleador. La información LTV se deja al ciclo de firma de pyHanko mediante `embed_validation_info`; no se agrega manualmente otra actualización DSS posterior.
+
 ## 4. PAdES-LTV
 
 PAdES-LTV permite que un PDF firmado conserve material de validación a largo plazo, como cadena de certificados, CRL/OCSP y timestamp.
@@ -141,6 +147,8 @@ Controles observados:
 - Rechazo de mutación si el hash esperado no coincide.
 - Procesamiento con PyMuPDF, pikepdf y, opcionalmente, Ghostscript.
 - Escrituras atómicas y reemplazo controlado.
+- Los recibos firmados cifrados se previsualizan y descargan solo después de validar y descifrar a un temporal seguro; su metadata KMS se persiste junto con la finalización de la firma.
+- Los temporales descifrados se eliminan al terminar el conteo, render o envío, y las respuestas de vista usan `Cache-Control: private, no-store`.
 
 Recomendaciones adicionales: ejecutar procesamiento PDF en sandbox, validar extensiones y magic bytes de todos los tipos de archivo, registrar versión del motor de firma y mantener librerías críticas actualizadas.
 

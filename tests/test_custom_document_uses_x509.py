@@ -12,25 +12,45 @@ from modules import digital_signature as ds
 
 def test_process_pdf_signs_custom_document_with_x509(monkeypatch, tmp_path):
     pdf_path = tmp_path / "input.pdf"
+    decrypted_pdf_path = tmp_path / "decrypted.pdf"
     doc = fitz.open()
     page = doc.new_page()
     page.insert_text((72, 72), "Documento personalizado")
     doc.save(pdf_path)
+    doc.save(decrypted_pdf_path)
     doc.close()
 
     calls = []
+    stamped_from = []
 
     class FakeEngine:
         def stamp_signature_from_bytes(self, **kwargs):
+            stamped_from.append(kwargs["pdf_path"])
             output_path = kwargs["output_path"]
-            Path(output_path).write_bytes(pdf_path.read_bytes())
+            Path(output_path).write_bytes(Path(kwargs["pdf_path"]).read_bytes())
             return {"generated_seal_id": "seal-123"}
 
         def calculate_file_sha256(self, path):
             return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
-    def fake_sign_pdf(input_path, receipt_id, signer_identity):
-        calls.append((input_path, receipt_id, signer_identity))
+    def fake_sign_pdf(
+        input_path,
+        receipt_id,
+        signer_identity,
+        prepare_next_signer=False,
+        signature_appearance=None,
+        next_signer_field_box=None,
+    ):
+        calls.append(
+            (
+                input_path,
+                receipt_id,
+                signer_identity,
+                prepare_next_signer,
+                signature_appearance,
+                next_signer_field_box,
+            )
+        )
         return {
             "status": "success",
             "signed_path": input_path,
@@ -67,6 +87,7 @@ def test_process_pdf_signs_custom_document_with_x509(monkeypatch, tmp_path):
         "receipt_id": "receipt-1",
         "organization_id": "org-1",
         "receipt_pdf_path": str(pdf_path),
+        "_decrypted_pdf_path": str(decrypted_pdf_path),
         "next_status": "signed",
         "full_name": "Juan Perez",
         "cuil": "20-12345678-9",
@@ -87,4 +108,6 @@ def test_process_pdf_signs_custom_document_with_x509(monkeypatch, tmp_path):
 
     assert result["signature_version"] == "v3_pki"
     assert len(calls) == 1
+    assert stamped_from == [str(decrypted_pdf_path)]
     assert calls[0][2]["full_name"] == "Juan Perez"
+    assert calls[0][3] is False

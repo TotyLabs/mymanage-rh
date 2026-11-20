@@ -59,6 +59,32 @@ def delete_batch_files(db: Session, batch_id: str) -> None:
         # Don't raise - allow batch deletion to proceed even if file cleanup has issues
 
 
+def _find_active_batch_page_duplicate(db: Session, batch_id: str, page_number: int):
+    return db.execute(
+        text("""
+            SELECT id FROM payroll_receipts
+            WHERE batch_id = :bid
+              AND page_number = :pnum
+              AND is_deleted = FALSE
+            LIMIT 1
+        """),
+        {"bid": batch_id, "pnum": page_number},
+    ).fetchone()
+
+
+def _find_active_hash_duplicate(db: Session, organization_id: str, page_sha256: str):
+    return db.execute(
+        text("""
+            SELECT id FROM payroll_receipts
+            WHERE organization_id = :oid
+              AND receipt_pdf_sha256 = :sha
+              AND is_deleted = FALSE
+            LIMIT 1
+        """),
+        {"oid": organization_id, "sha": page_sha256},
+    ).fetchone()
+
+
 # =====================================================================
 # OCR Patterns
 # =====================================================================
@@ -556,18 +582,16 @@ def process_payroll_batch(
                 # Prevent duplicate receipts by checking existing records before inserting.
                 with safe_transaction(db):
                     # 1) Check duplicate by batch_id + page_number
-                    existing = db.execute(text("""
-                        SELECT id FROM payroll_receipts WHERE batch_id = :bid AND page_number = :pnum LIMIT 1
-                    """), {"bid": batch_id, "pnum": i + 1}).fetchone()
+                    existing = _find_active_batch_page_duplicate(db, batch_id, i + 1)
 
                     if existing:
                         receipt_id = existing.id
                         logger.info(f"batch.page_skipped_duplicate batch={batch_id} page={i+1} receipt={receipt_id}")
                     else:
                         # 2) Check duplicate by organization + sha (same page content across batches)
-                        existing_sha = db.execute(text("""
-                            SELECT id FROM payroll_receipts WHERE organization_id = :oid AND receipt_pdf_sha256 = :sha LIMIT 1
-                        """), {"oid": organization_id, "sha": page_sha256}).fetchone()
+                        existing_sha = _find_active_hash_duplicate(
+                            db, organization_id, page_sha256
+                        )
 
                         if existing_sha:
                             receipt_id = existing_sha.id

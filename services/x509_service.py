@@ -11,7 +11,7 @@ import time
 import json
 import hashlib
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from datetime import datetime, timezone
 import httpx
 from cryptography.x509 import ocsp
@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 import config
 
 from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
-from pyhanko.sign import signers
+from pyhanko.sign import fields, signers
 from pyhanko.sign.timestamps import HTTPTimeStamper
 
 logger = logging.getLogger("dircom.payroll")
@@ -211,7 +211,60 @@ def validate_certificate_status(cert: crypto_x509.Certificate, issuer_cert: cryp
 
     return "unknown", "NONE", "unknown"
 
-def sign_pdf(input_path: str, receipt_id: str, signer_identity: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+
+def _prepare_signature_fields(
+    writer,
+    role: str,
+    prepare_next_signer: bool = False,
+    next_signer_field_box: Optional[Tuple[float, float, float, float]] = None,
+) -> str:
+    field_names = {
+        "employer": ("MyManageRH_EmployerSignature", "MyManageRH_EmployeeSignature"),
+        "employee": ("MyManageRH_EmployeeSignature",),
+    }
+    if role not in field_names:
+        raise ValueError(f"Unsupported PDF signer role: {role}")
+    if prepare_next_signer and role != "employer":
+        raise ValueError("Only an employer signature can prepare the employee signature field")
+    if prepare_next_signer and next_signer_field_box is None:
+        raise ValueError("Employee signature field requires a reserved appearance box")
+
+    fields_to_prepare = field_names[role]
+    if not prepare_next_signer:
+        fields_to_prepare = fields_to_prepare[:1]
+
+    current_field_name = fields_to_prepare[0]
+    for field_name in fields_to_prepare:
+        existing_field = next(
+            fields.enumerate_sig_fields(writer, with_name=field_name),
+            None,
+        )
+        if existing_field:
+            if field_name == current_field_name and existing_field[1] is not None:
+                raise ValueError(f"Signature field is already signed: {field_name}")
+            continue
+
+        box = (
+            next_signer_field_box
+            if field_name == "MyManageRH_EmployeeSignature"
+            else None
+        )
+        fields.append_signature_field(
+            writer,
+            fields.SigFieldSpec(sig_field_name=field_name, on_page=0, box=box),
+        )
+
+    return current_field_name
+
+
+def sign_pdf(
+    input_path: str,
+    receipt_id: str,
+    signer_identity: Optional[Dict[str, Any]] = None,
+    prepare_next_signer: bool = False,
+    signature_appearance: Optional[bytes] = None,
+    next_signer_field_box: Optional[Tuple[float, float, float, float]] = None,
+) -> Dict[str, Any]:
     start_time = time.perf_counter()
     
     p12_path = Path(config.X509_P12_PATH)
@@ -246,11 +299,17 @@ def sign_pdf(input_path: str, receipt_id: str, signer_identity: Optional[Dict[st
 
         # 3. Signing Logic with Atomic Buffer Fallbacks
         display_name = "Dircom Signer"
+        signer_role = "employer"
         if signer_identity:
-            if signer_identity.get("role") in ("employer", "admin"):
+            identity_role = signer_identity.get("role")
+            if identity_role in ("employer", "admin"):
+                signer_role = "employer"
                 display_name = f"Empleador: {signer_identity.get('full_name', 'Default')}"
-            else:
+            elif identity_role == "employee":
+                signer_role = "employee"
                 display_name = f"Empleado: {signer_identity.get('full_name', 'Desconocido')} (DNI: {signer_identity.get('dni', 'N/D')})"
+            else:
+                raise ValueError(f"Unsupported PDF signer role: {identity_role}")
         
         # Optimized TSA Selection using Cached Timestamper
         timestamper = get_timestamper()
@@ -262,45 +321,65 @@ def sign_pdf(input_path: str, receipt_id: str, signer_identity: Optional[Dict[st
                 
                 with open(input_path, "rb") as inf:
                     w = IncrementalPdfFileWriter(inf)
+                    if signer_role == "employee" and signature_appearance:
+                        employee_field = next(
+                            fields.enumerate_sig_fields(
+                                w,
+                                with_name="MyManageRH_EmployeeSignature",
+                            ),
+                            None,
+                        )
+                        if employee_field is None:
+                            raise ValueError(
+                                "Employee signature field was not prepared by the employer"
+                            )
+                    field_name = _prepare_signature_fields(
+                        w,
+                        signer_role,
+                        prepare_next_signer=prepare_next_signer,
+                        next_signer_field_box=next_signer_field_box,
+                    )
                     sig_meta = signers.PdfSignatureMetadata(
-                        field_name=f"Sig_{uuid.uuid4().hex[:12]}",
+                        field_name=field_name,
                         reason="Firma de recibo laboral",
                         location="Argentina",
                         name=display_name,
+                        certify=prepare_next_signer,
+                        docmdp_permissions=fields.MDPPerm.FILL_FORMS,
                         embed_validation_info=embed_ltv,
                         validation_context=vc,
                         signer_key_usage=None
                     )
+                    stamp_style = None
+                    if signature_appearance:
+                        from PIL import Image
+                        from pyhanko.pdf_utils.images import PdfImage
+                        from pyhanko.stamp import StaticStampStyle
+
+                        stamp_style = StaticStampStyle(
+                            border_width=0,
+                            background=PdfImage(
+                                Image.open(io.BytesIO(signature_appearance))
+                            ),
+                            background_opacity=1,
+                        )
                     
                     pdf_signer = signers.PdfSigner(
                         signature_meta=sig_meta,
                         signer=signer,
-                        timestamper=ts
+                        timestamper=ts,
+                        stamp_style=stamp_style,
                     )
                     
-                    pdf_signer.sign_pdf(w, in_place=False, bytes_reserved=None, output=out_buffer)
-                
-                if embed_ltv and vc:
-                    try:
-                        out_buffer.seek(0)
-                        from pyhanko.pdf_utils.reader import PdfFileReader
-                        from pyhanko.sign import validation
-                        
-                        r = PdfFileReader(out_buffer)
-                        emb = r.embedded_signatures[0]
-                        
-                        ltv_buffer = io.BytesIO()
-                        validation.add_validation_info(
-                            embedded_sig=emb,
-                            validation_context=vc,
-                            output=ltv_buffer
-                        )
-                        final_data = ltv_buffer.getvalue()
-                    except Exception as ltv_err:
-                        logger.warning(f"LTV_POST_PROCESS_ERROR: {ltv_err}")
-                        final_data = out_buffer.getvalue()
-                else:
-                    final_data = out_buffer.getvalue()
+                    pdf_signer.sign_pdf(
+                        w,
+                        existing_fields_only=True,
+                        in_place=False,
+                        bytes_reserved=None,
+                        output=out_buffer,
+                    )
+
+                final_data = out_buffer.getvalue()
                 
                 with open(temp_path, "wb") as f:
                     f.write(final_data)

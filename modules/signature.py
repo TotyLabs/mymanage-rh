@@ -299,7 +299,8 @@ class SignatureEngine:
                                     signature_level: str = "X509",
                                     doc_type: str = None,
                                     source: str = None,
-                                    apply_to_all_pages: bool = False) -> Dict:
+                                    apply_to_all_pages: bool = False,
+                                    prepare_next_signer: bool = False) -> Dict:
         
         # GAP-L2-01: Fail-fast resource limits (Large file protection)
         import config
@@ -340,7 +341,10 @@ class SignatureEngine:
 
         start_time = time.time()
         doc = None
+        overlay_doc = None
         temp_pdf = None
+        field_appearance_png = None
+        next_signer_field_box = None
         output_path = output_path or pdf_path.replace(".pdf", f"_{role}_signed.pdf")
         
         try:
@@ -352,6 +356,12 @@ class SignatureEngine:
                 os.close(fd)
                 shutil.copy2(pdf_path, temp_pdf)
                 doc = fitz.open(temp_pdf)
+                overlay_doc = fitz.open()
+                for source_page in doc:
+                    overlay_doc.new_page(
+                        width=source_page.rect.width,
+                        height=source_page.rect.height,
+                    )
             else:
                 doc = fitz.open(pdf_path)
                 
@@ -370,19 +380,18 @@ class SignatureEngine:
             meta = doc.metadata
             existing_keywords = meta.get("keywords", "")
             
-            # Clean up metadata and prepare for new seal
-            meta["author"] = "MyManageRH Engine"
-            meta["subject"] = f"Electronically Signed by {signer_name or 'Auto-Signer'}"
-            meta["creator"] = "MyManageRH SaaS v1.0"
-            meta["producer"] = "MyManageRH Signature Engine (Industrial-Grade)"
-            meta["creationDate"] = timestamp.isoformat()
-            meta["modDate"] = datetime.utcnow().isoformat()
-            
-            # Note: keywords will be updated during sealing
-            doc.set_metadata(meta)
+            if not is_signed_crypto:
+                meta["author"] = "MyManageRH Engine"
+                meta["subject"] = f"Electronically Signed by {signer_name or 'Auto-Signer'}"
+                meta["creator"] = "MyManageRH SaaS v1.0"
+                meta["producer"] = "MyManageRH Signature Engine (Industrial-Grade)"
+                meta["creationDate"] = timestamp.isoformat()
+                meta["modDate"] = datetime.utcnow().isoformat()
+                doc.set_metadata(meta)
             
             seal_applied = False
             occupied_rects_by_page = {}
+            overlay_rects_by_page = {}
 
             # Iterate through ALL pages
             for page_num in range(doc.page_count):
@@ -390,6 +399,7 @@ class SignatureEngine:
                     raise SignatureError("PDF processing timeout")
                 
                 page = doc.load_page(page_num)
+                visual_page = overlay_doc.load_page(page_num) if is_signed_crypto else page
                 normalized_doc_type = str(doc_type or "").upper()
                 
                 # Pre-verificación de texto (Scanned PDF Check)
@@ -547,9 +557,11 @@ class SignatureEngine:
                                 sig_rect.y0 -= 5
                                 sig_rect.y1 -= 5
                         
-                        page.insert_image(sig_rect, stream=cleaned_sig_bytes, keep_proportion=True)
+                        visual_page.insert_image(sig_rect, stream=cleaned_sig_bytes, keep_proportion=True)
                         if page_num not in occupied_rects_by_page: occupied_rects_by_page[page_num] = []
                         occupied_rects_by_page[page_num].append(sig_rect)
+                        if is_signed_crypto:
+                            overlay_rects_by_page.setdefault(page_num, []).append(sig_rect)
                         signatures_applied += 1
                 else:
                     # In V2, we count the "seal" as the signature application
@@ -562,65 +574,124 @@ class SignatureEngine:
                     anchor_rect = override_anchor_rect
 
                     if anchor_rect:
-                        self._stamp_validation_seal(
-                            page, sig_id, signer_name, signer_tax_id, 
+                        seal_rect = self._stamp_validation_seal(
+                            visual_page, sig_id, signer_name, signer_tax_id,
                             timestamp, logo_bytes, verification_url,
                             document_hash=hash_original,
                             signer_identity=signer_identity,
                             signature_level=signature_level, role=role,
                             signature_bytes=signature_bytes,
-                            doc=doc,
+                            doc=None if is_signed_crypto else doc,
                             anchor_rect=anchor_rect,
                             occupied_rects=occupied_rects_by_page.get(page_num, []),
                             place_on_anchor=place_seal_on_anchor,
                             doc_type=doc_type,
                             allow_duplicate=apply_to_all_pages,
                         )
+                        if is_signed_crypto and seal_rect:
+                            overlay_rects_by_page.setdefault(page_num, []).append(seal_rect)
                         seal_applied = True
                     else:
                         # If no explicit override anchor exists, let the seal engine
                         # choose the usual fallback position (Observaciones or header).
-                        self._stamp_validation_seal(
-                            page, sig_id, signer_name, signer_tax_id, 
+                        seal_rect = self._stamp_validation_seal(
+                            visual_page, sig_id, signer_name, signer_tax_id,
                             timestamp, logo_bytes, verification_url,
                             document_hash=hash_original,
                             signer_identity=signer_identity,
                             signature_level=signature_level, role=role,
                             signature_bytes=signature_bytes,
-                            doc=doc,
+                            doc=None if is_signed_crypto else doc,
                             occupied_rects=occupied_rects_by_page.get(page_num, []),
                             doc_type=doc_type,
                             allow_duplicate=apply_to_all_pages,
                         )
+                        if is_signed_crypto and seal_rect:
+                            overlay_rects_by_page.setdefault(page_num, []).append(seal_rect)
                         seal_applied = True
                 
 
             # Fallback (Si no se encontró el ancla en ninguna página del documento)
             if not seal_applied:
                 page = doc.load_page(0)
+                visual_page = overlay_doc.load_page(0) if is_signed_crypto else page
                 current_keywords = doc.metadata.get("keywords", "") or ""
                 # Deduplication check before fallback
                 if f"seal:{role}:" not in current_keywords:
-                    self._stamp_validation_seal(
-                        page, sig_id, signer_name, signer_tax_id, 
+                    seal_rect = self._stamp_validation_seal(
+                        visual_page, sig_id, signer_name, signer_tax_id,
                         timestamp, logo_bytes, verification_url,
                         document_hash=hash_original,
                         signer_identity=signer_identity,
                         signature_level=signature_level, role=role,
                         signature_bytes=signature_bytes,
-                        doc=doc,
+                        doc=None if is_signed_crypto else doc,
                         occupied_rects=occupied_rects_by_page.get(0, []),
                         doc_type=doc_type,
                     )
+                    if is_signed_crypto and seal_rect:
+                        overlay_rects_by_page.setdefault(0, []).append(seal_rect)
                     seal_applied = True
                 else:
                     logger.info(f"signature.seal_skip_fallback: {role} seal already exists")
                     seal_applied = True
 
+            if prepare_next_signer and not is_signed_crypto:
+                if doc.page_count != 1:
+                    raise SignatureError("multi_page_next_signer_field_unsupported")
+                prediction_doc = fitz.open()
+                try:
+                    prediction_doc.insert_pdf(doc, from_page=0, to_page=0)
+                    prediction_page = prediction_doc.load_page(0)
+                    employee_seal_rect = self._stamp_validation_seal(
+                        prediction_page,
+                        "EMPLOYEE_SIGNATURE_FIELD",
+                        signer_name="Empleado",
+                        signer_tax_id=None,
+                        timestamp=timestamp,
+                        logo_bytes=logo_bytes,
+                        verification_url=verification_url,
+                        document_hash=hash_original,
+                        signer_identity=None,
+                        signature_level=signature_level,
+                        role="employee",
+                        signature_bytes=signature_bytes,
+                        doc_type=doc_type,
+                    )
+                    if not employee_seal_rect:
+                        raise SignatureError("employee_signature_field_position_missing")
+                    next_signer_field_box = (
+                        float(employee_seal_rect.x0 - 1),
+                        float(prediction_page.rect.height - employee_seal_rect.y1 - 1),
+                        float(employee_seal_rect.x1 + 1),
+                        float(prediction_page.rect.height - employee_seal_rect.y0 + 1),
+                    )
+                finally:
+                    prediction_doc.close()
+
             # Save modified PDF atomically
             try:
                 if is_signed_crypto:
-                    doc.saveIncr()
+                    if len(overlay_rects_by_page) > 1:
+                        raise SignatureError("multi_page_signature_appearance_unsupported")
+                    for page_num, overlay_rects in overlay_rects_by_page.items():
+                        if not overlay_rects:
+                            continue
+                        appearance_rect = fitz.Rect(overlay_rects[0])
+                        for overlay_rect in overlay_rects[1:]:
+                            appearance_rect.include_rect(overlay_rect)
+                        appearance_rect.x0 = max(0, appearance_rect.x0 - 1)
+                        appearance_rect.y0 = max(0, appearance_rect.y0 - 1)
+                        page_rect = doc.load_page(page_num).rect
+                        appearance_rect.x1 = min(page_rect.width, appearance_rect.x1 + 1)
+                        appearance_rect.y1 = min(page_rect.height, appearance_rect.y1 + 1)
+                        field_appearance_png = overlay_doc.load_page(page_num).get_pixmap(
+                            matrix=fitz.Matrix(2, 2),
+                            alpha=True,
+                            clip=appearance_rect,
+                        ).tobytes("png")
+                    overlay_doc.close()
+                    overlay_doc = None
                 else:
                     import tempfile
                     out_dir = os.path.dirname(output_path)
@@ -669,7 +740,7 @@ class SignatureEngine:
             
             logger.info(f"signature.engine.stamped id={sig_id} role={role} applied={signatures_applied}")
             
-            return {
+            result = {
                 "signed_pdf_path": output_path,
                 "signature_id": sig_id,
                 "hash_original_pdf": hash_original,
@@ -677,7 +748,17 @@ class SignatureEngine:
                 "audit_record": audit_record,
                 "generated_seal_id": sig_id
             }
+            if field_appearance_png:
+                result["field_appearance_png"] = field_appearance_png
+            if next_signer_field_box:
+                result["next_signer_field_box"] = next_signer_field_box
+            return result
         finally:
+            if overlay_doc and not getattr(overlay_doc, "is_closed", True):
+                try:
+                    overlay_doc.close()
+                except:
+                    pass
             if doc and not getattr(doc, 'is_closed', True):
                 try:
                     doc.close()
@@ -702,7 +783,7 @@ class SignatureEngine:
         # If no anchor_rect is provided, we use global deduplication for Header Fallback
         if not allow_duplicate and not anchor_rect and f"seal:{role}:" in keywords:
              logger.info(f"signature.seal_skip_header: {role} header seal already exists.")
-             return
+             return None
 
         title = "FIRMA ELECTRÓNICA - EMPLEADO" if role == "employee" else "FIRMA ELECTRÓNICA - EMPLEADOR"
         
@@ -913,6 +994,7 @@ class SignatureEngine:
                 meta["keywords"] = (current_keywords + " " + new_seal_key).strip()
                 doc.set_metadata(meta)
                 logger.info(f"signature.metadata_updated role={role} sig_id={sig_id} new_keywords='{meta['keywords']}'")
+        return seal_rect
 
     # =========================================================================
     # Position Detection (Intent-Based: Multi-anchor scanning)
