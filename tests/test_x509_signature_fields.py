@@ -21,6 +21,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 
 from services.x509_service import _prepare_signature_fields
 from modules.signature import SignatureEngine
+from services.public_document_verification import _validate_pdf_signatures
 
 
 def _minimal_pdf():
@@ -163,6 +164,32 @@ def test_precreated_employee_field_allows_incremental_second_signature(tmp_path)
     assert statuses[0].diff_result.modification_level == ModificationLevel.FORM_FILLING
     assert statuses[0].diff_result.changed_form_fields == {"MyManageRH_EmployeeSignature"}
     assert statuses[1].diff_result.modification_level == ModificationLevel.NONE
+
+
+def test_public_verifier_reports_each_embedded_signature_and_certificate(tmp_path):
+    signer = _test_signer(tmp_path)
+    employer_signed = _sign_revision(
+        _minimal_pdf(),
+        "employer",
+        signer,
+        prepare_next_signer=True,
+        next_signer_field_box=(30, 600, 210, 760),
+    )
+    final_pdf = _sign_revision(employer_signed, "employee", signer)
+    path = tmp_path / "public-verification.pdf"
+    path.write_bytes(final_pdf)
+
+    result = _validate_pdf_signatures(path)
+
+    assert result["count"] == 2
+    assert [signature["field_name"] for signature in result["signatures"]] == [
+        "MyManageRH_EmployerSignature",
+        "MyManageRH_EmployeeSignature",
+    ]
+    assert all(signature["intact"] and signature["valid"] for signature in result["signatures"])
+    assert all(signature["certificate_fingerprint"] for signature in result["signatures"])
+    assert all(signature["certificate_serial"] for signature in result["signatures"])
+    assert all(signature["timestamp_status"] == "not_present" for signature in result["signatures"])
 
 def test_visual_employee_seal_is_added_inside_certified_signature_field(tmp_path):
     signer = _test_signer(tmp_path)

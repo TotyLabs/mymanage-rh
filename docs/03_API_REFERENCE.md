@@ -85,7 +85,7 @@ Notas: el sistema registra intentos fallidos, puede bloquear temporalmente la cu
 | `POST` | `/api/receipts/bulk-delete` | Eliminación masiva controlada. | Admin |
 | `POST` | `/api/receipts/{receipt_id}/payment-receipt` | Adjunta comprobante de pago. | Admin |
 | `GET` | `/api/receipts/{receipt_id}/payment-receipt` | Descarga comprobante de pago. | Autenticado con autorización |
-| `GET` | `/api/receipts/v/{seal_id}` | Verificación pública de sello QR. | Público |
+| `GET` | `/api/receipts/v/{seal_id}` | Verifica storage físico, hashes registrados y firma PDF con PyHanko. | Público, 30/minuto |
 
 ### 5.3 Firma
 
@@ -255,19 +255,53 @@ file=@recibos_demo.pdf
 
 ```json
 {
-  "status": "valid",
-  "seal_id": "AB12CD34EF56AB78",
+  "status": "warning",
+  "integrity_status": "yellow",
   "document_id": "33333333-3333-4333-8333-333333333333",
+  "document_type": "recibo",
   "organization": "Empresa Demo S.A.",
-  "signer": {
-    "name": "Juan Demo",
-    "dni": "********",
-    "role": "employee"
+  "signed_at": "2026-11-20T14:40:00Z",
+  "verification_id": "VER-DEMO",
+  "audit_verification_id": "VER-DEMO",
+  "document_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "signature_count": 1,
+  "checks": {
+    "storage": {"status": "valid", "message": "El archivo existe en el almacenamiento."},
+    "database_hash": {"status": "valid", "message": "El SHA-256 coincide con el registro actual del documento."},
+    "seal_hash": {"status": "valid", "message": "El hash del sello coincide con el archivo."},
+    "evidence_hash": {"status": "valid", "message": "El hash de la evidencia de firma coincide con el archivo."},
+    "database_evidence": {
+      "status": "valid",
+      "message": "La evidencia de firma coincide con los registros de DB.",
+      "details": ["1 registro(s) de signature_evidence y 1 evento(s) de firma analizados."]
+    },
+    "certificate_correlation": {
+      "status": "valid",
+      "message": "Los fingerprints y números de serie de la evidencia coinciden con firmas del PDF."
+    },
+    "pdf_signature": {
+      "status": "untrusted",
+      "message": "La firma PDF es íntegra, pero el certificado no pudo establecerse como confiable.",
+      "trust_source": "configured_root"
+    }
   },
-  "timestamp": "2026-04-25T14:40:00Z",
-  "integrity_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  "pdf_signatures": [{
+    "field_name": "Signature1",
+    "intact": true,
+    "valid": true,
+    "trusted": false,
+    "docmdp_ok": true,
+    "certificate_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "certificate_serial": "1234",
+    "timestamp_status": "valid"
+  }],
+  "legacy_warning": true,
+  "legacy_cutoff": "2026-11-20",
+  "download_url": "/api/receipts/33333333-3333-4333-8333-333333333333/download"
 }
 ```
+
+`integrity_status` puede ser `green`, `yellow` o `red`. Antes de validar con PyHanko, el servidor analiza la continuidad de hashes en `signature_events`, su relación con `signature_evidence`, los hashes de los sellos y la disponibilidad e integridad de las imágenes de firma. Luego valida cada firma PDF con el contexto de confianza configurado, y coteja fingerprint y número de serie contra la evidencia de DB. `red` indica una inconsistencia comprobable, como archivo ausente, hashes discordantes o firma inválida; `yellow` representa evidencia incompleta, validación no concluyente, certificado no confiable o un documento legacy firmado hasta el 20/11/2026 inclusive. La clasificación legacy no oculta discrepancias reales. La descarga indicada conserva los controles de autenticación y permisos del endpoint.
 
 ## 8. Errores comunes
 

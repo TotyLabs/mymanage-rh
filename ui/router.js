@@ -6,7 +6,7 @@ import { tosAcceptance } from './tos-acceptance.js?v=123';
 import { ROUTES } from './constants.js?v=123';
 import { clearPageSchema, getLegalDocumentRoute, updatePageSeo } from './seo.js?v=2';
 
-const VERSION = '134'; // Refresh landing and support pages
+const VERSION = '137'; // Refresh public verification labels
 
 const loadPage = (page) => import(`./pages/${page}.js?v=${VERSION}`);
 

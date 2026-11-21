@@ -705,7 +705,7 @@ class DigitalSignatureEngine:
         # 1. Update receipt using normalized repository
         ts_col = "employer_signed_at" if role == "employer" else "employee_signed_at"
         
-        sig_id = pdf_result.get("x509_fingerprint") or pdf_result["sig_image_sha256"]
+        sig_id = pdf_result.get("fingerprint") or pdf_result["sig_image_sha256"]
         audit_meta = {
             f"{role}_signed": True,
             f"{role}_signed_at": now.isoformat(),
@@ -826,7 +826,7 @@ class DigitalSignatureEngine:
             "data": json.dumps({
                 "signature_sha256": pdf_result["sig_image_sha256"],
                 "document_hash": pdf_result["new_pdf_sha256"],
-                "certificate_fingerprint": pdf_result.get("x509_fingerprint"),
+                "certificate_fingerprint": pdf_result.get("fingerprint"),
                 "signer_role": role,
                 # Gap 10.2: Redact PII — store identity hash, not raw identity
                 "signer_identity_hash": pdf_result.get("id_hash"),
@@ -835,7 +835,7 @@ class DigitalSignatureEngine:
                 "ltv_status": pdf_result.get("ltv_status", "NONE"),
                 "signature_origin": ctx.get("signature_origin", "UNKNOWN"),
                 "signature_version": pdf_result.get("signature_version"),
-                "action": "DOCUMENT_SIGNED_X509" if pdf_result.get("x509_fingerprint") else None,
+                "action": "DOCUMENT_SIGNED_X509" if pdf_result.get("fingerprint") else None,
                 # Gap 11.1: Legal text version hash for forensic traceability
                 "legal_acceptance_hash": LEGAL_ACCEPTANCE_HASH
             }),

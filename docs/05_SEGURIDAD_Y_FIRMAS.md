@@ -89,9 +89,9 @@ Cada sello puede incluir un `seal_id` verificable mediante endpoint público:
 GET /api/receipts/v/{seal_id}
 ```
 
-El sello QR apunta a una URL de verificación configurada por `BASE_PUBLIC_URL` y permite consultar estado del sello, documento asociado, organización, firmante, rol, timestamp y hash de integridad.
+El sello QR apunta a `/v/{seal_id}` y muestra si existe el archivo físico, si coinciden los hashes de documento/sello/evidencia, la consistencia de la evidencia de firma guardada en DB y el resultado de PyHanko para cada firma PDF. La validación utiliza la raíz de confianza configurada cuando está disponible y coteja los certificados incrustados con el fingerprint y número de serie registrados. En los legajos se revisan además el PDF de origen y los hashes del registro de firma visual y del sello. La respuesta pública no expone nombre, DNI ni datos salariales del firmante.
 
-El QR no debe exponer datos salariales ni permitir descargar el recibo sin autorización.
+El QR no permite descargar el recibo sin autorización. La opción de descarga conserva la autenticación y los permisos del endpoint del tipo de documento.
 
 ## 8. Identidad del firmante
 

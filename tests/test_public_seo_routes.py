@@ -53,6 +53,13 @@ def test_legal_aliases_redirect_to_stable_spa_urls():
     assert privacy_page.status_code == 200
 
 
+def test_qr_verification_redirects_to_integrity_page():
+    response = client.get("/v/AB12CD34EF56", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/ui/#/verify/AB12CD34EF56"
+
+
 def test_public_pages_are_prerendered_with_matching_seo_metadata():
     pages = [
         ("/ui/", "https://mymanagerh.com/ui/", "home"),
@@ -73,7 +80,7 @@ def test_public_pages_are_prerendered_with_matching_seo_metadata():
         assert '<meta name="twitter:image" content="https://mymanagerh.com/ui/assets/social/mymanagerh-social-card.png"' in response.text
         assert response.text.count('rel="canonical"') == 1
         assert response.text.count('name="description"') == 1
-        assert '<script type="module" src="app.js?v=135"></script>' in response.text
+        assert '<script type="module" src="app.js?v=137"></script>' in response.text
         assert 'lang="es-AR"' in response.text
 
         schema_match = re.search(

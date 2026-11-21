@@ -89,7 +89,15 @@ Operaciones debe confirmar que migraciones y scripts de inmutabilidad están apl
 - Cuarentena de archivos parciales ante fallos de firma.
 - Triggers `protect_audit_log`, `protect_signature_evidence`, `protect_signature_events` y protecciones de recibos firmados si están aplicados.
 - Logs con hashes enmascarados cuando corresponde.
-- Endpoint público de sello que verifica contra `receipt_seals`.
+- Endpoint público de verificación que comprueba el archivo físico, analiza la continuidad de hashes entre `signature_events`, `signature_evidence` y `receipt_seals`, verifica los archivos de firma visual y valida cada firma PDF con PyHanko y el contexto de confianza configurado.
+
+La consulta pública `/v/{id}` clasifica el resultado en tres niveles:
+
+- **Verde:** existe el archivo, coinciden sus hashes y los registros de evidencia/sello, los certificados incrustados coinciden con la DB y PyHanko valida las firmas.
+- **Amarillo:** falta evidencia concluyente, un archivo auxiliar ya no está disponible, el certificado o TSA no pudo establecerse como confiable o el documento fue firmado el 20/11/2026 o antes.
+- **Rojo:** falta el PDF principal, un hash o fingerprint contradice sus registros, una imagen de firma no coincide o PyHanko detecta una firma/TSA inválida o cambios no permitidos.
+
+Un hash de sello o evidencia de una versión anterior se considera consistente si coincide con un evento en la cadena de hashes que llega al PDF actual. En documentos legacy, si no puede demostrarse la continuidad, el resultado queda incompleto; una discrepancia comprobable se marca roja incluso para esos documentos. La descarga del PDF sigue requiriendo autenticación y permisos sobre el documento.
 
 ## 8. Trazabilidad por usuario, organización y recibo
 

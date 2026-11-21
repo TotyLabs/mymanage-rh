@@ -9,7 +9,7 @@ load_dotenv()
 import os
 import ipaddress
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 import asyncio
 from datetime import timedelta
 from fastapi import FastAPI, Depends, Request, HTTPException
@@ -306,85 +306,12 @@ async def legacy_sign_redirect(token: str):
     return RedirectResponse(url=f"{config.BASE_PUBLIC_URL}/api/signature-requests/{token}")
 
 # --- Public QR Verification Endpoint (FES Validation) ---
-@app.get("/v/{seal_id}")
-async def verify_seal_page(seal_id: str, db: Session = Depends(get_db)):
-    from fastapi import HTTPException
-    row = db.execute(text("""
-        SELECT s.*, o.name as organization_name, o.logo_path
-        FROM receipt_seals s
-        JOIN organizations o ON o.id = s.organization_id
-        WHERE s.seal_id = :sid
-    """), {"sid": seal_id}).fetchone()
-
-    if not row:
-        return HTMLResponse(
-            content="""
-            <html>
-                <head><title>Firma no encontrada</title></head>
-                <body style="font-family: sans-serif; text-align: center; margin-top: 50px;">
-                    <h2 style="color: #d9534f;">No se encontr&oacute; la firma</h2>
-                    <p>El c&oacute;digo QR o enlace proporcionado no es v&aacute;lido o ha expirado.</p>
-                </body>
-            </html>
-            """,
-            status_code=404
-        )
-
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Verificaci&oacute;n de Firma Electr&oacute;nica</title>
-        <style>
-            body {{ font-family: 'Inter', sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }}
-            .card {{ background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; width: 100%; }}
-            .header {{ text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 1rem; margin-bottom: 1rem; }}
-            .header h1 {{ margin: 0; font-size: 1.5rem; color: #1e293b; }}
-            .status {{ text-align: center; padding: 0.5rem; background-color: #def7ec; color: #03543f; border-radius: 6px; font-weight: bold; margin-bottom: 1.5rem; border: 1px solid #84e1bc; }}
-            .field {{ margin-bottom: 0.8rem; }}
-            .label {{ font-size: 0.85rem; color: #64748b; font-weight: 600; text-transform: uppercase; }}
-            .value {{ font-size: 1rem; color: #0f172a; font-weight: 500; word-break: break-all; }}
-            .footer {{ text-align: center; font-size: 0.75rem; color: #94a3b8; margin-top: 2rem; }}
-        </style>
-    </head>
-    <body>
-        <div class="card">
-            <div class="header">
-                <h1>Firma Electr&oacute;nica Verificada</h1>
-            </div>
-            <div class="status">
-                &#10004; Firma V&aacute;lida e Inalterada
-            </div>
-            <div class="field">
-                <div class="label">Organizaci&oacute;n</div>
-                <div class="value">{row.organization_name}</div>
-            </div>
-            <div class="field">
-                <div class="label">Firmante</div>
-                <div class="value">{row.signer_name} (DNI/CUIT: {row.signer_dni})</div>
-            </div>
-            <div class="field">
-                <div class="label">Rol</div>
-                <div class="value">{'Empleador' if row.signer_role == 'employer' else 'Empleado'}</div>
-            </div>
-            <div class="field">
-                <div class="label">Fecha y Hora de Firma</div>
-                <div class="value">{row.created_at.strftime('%d/%m/%Y %H:%M:%S')}</div>
-            </div>
-            <div class="field">
-                <div class="label">ID de Sello</div>
-                <div class="value">{row.seal_id}</div>
-            </div>
-            <div class="footer">
-                Generado y validado criptogr&aacute;ficamente por MyManageRH.
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html_content)
+@app.get("/v/{seal_id}", include_in_schema=False)
+async def verify_seal_page(seal_id: str):
+    return RedirectResponse(
+        url=f"/ui/#/verify/{quote(seal_id, safe='')}",
+        status_code=307,
+    )
 
 
 # --- Observability Endpoints (Phase 4 Hardening) ---

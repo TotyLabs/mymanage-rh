@@ -25,7 +25,7 @@ from sqlalchemy import text
 
 import config
 from payroll_core import (
-    get_db, require_auth, require_admin, logger, safe_transaction,
+    get_db, require_auth, require_admin, logger, limiter, safe_transaction,
     create_signature_request, get_existing_signature_request,
     utc_now, validate_organization_access,
     audit, safe_join_under_storage, hash_token, compute_file_sha256,
@@ -53,6 +53,7 @@ from services.signature_file_service import (
     encrypt_signed_pdf_result,
     persist_signed_pdf_encryption_metadata,
 )
+from services.public_document_verification import verify_public_document
 from models.receipts import Receipt
 from models.tables import Organization, UserSignature
 
@@ -1898,31 +1899,16 @@ async def download_payment_receipt(
 # =====================================================
 
 @router.get("/v/{seal_id}")
-async def verify_seal(seal_id: str, db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+async def verify_seal(
+    seal_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """
-    Public endpoint to verify a seal_id signature.
-    Source of truth: receipt_seals table.
+    Public endpoint to verify document storage, recorded hashes and PDF signatures.
     """
-    row = db.execute(text("""
-        SELECT s.*, o.name as organization_name
-        FROM receipt_seals s
-        JOIN organizations o ON o.id = s.organization_id
-        WHERE s.seal_id = :sid
-    """), {"sid": seal_id}).fetchone()
-
-    if not row:
+    result = verify_public_document(db, seal_id)
+    if not result:
         raise HTTPException(404, "seal_not_found")
-
-    return {
-        "status": "valid",
-        "seal_id": row.seal_id,
-        "document_id": str(row.receipt_id),
-        "organization": row.organization_name,
-        "signer": {
-            "name": row.signer_name,
-            "dni": row.signer_dni,
-            "role": row.signer_role
-        },
-        "timestamp": row.created_at.isoformat(),
-        "integrity_hash": row.pdf_hash
-    }
+    return result
